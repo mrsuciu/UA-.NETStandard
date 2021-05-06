@@ -3069,6 +3069,11 @@ namespace Opc.Ua.Server
                 bool encryptionRequired = (restrictions & AccessRestrictionType.EncryptionRequired) == AccessRestrictionType.EncryptionRequired;
                 bool signingRequired = (restrictions & AccessRestrictionType.SigningRequired) == AccessRestrictionType.SigningRequired;
                 bool sessionRequired = (restrictions & AccessRestrictionType.SessionRequired) == AccessRestrictionType.SessionRequired;
+                bool applyRestrictionsToBrowseRequired = (restrictions & AccessRestrictionType.ApplyRestrictionsToBrowse) == AccessRestrictionType.ApplyRestrictionsToBrowse;
+
+                bool requestIsBrowseRelated = context.RequestType == RequestType.Browse ||
+                    context.RequestType == RequestType.BrowseNext ||
+                    context.RequestType == RequestType.TranslateBrowsePathsToNodeIds;
 
                 if ((encryptionRequired &&
                      context.ChannelContext.EndpointDescription.SecurityMode != MessageSecurityMode.SignAndEncrypt &&
@@ -3077,7 +3082,9 @@ namespace Opc.Ua.Server
                      context.ChannelContext.EndpointDescription.SecurityMode != MessageSecurityMode.Sign &&
                      context.ChannelContext.EndpointDescription.SecurityMode != MessageSecurityMode.SignAndEncrypt &&
                      context.ChannelContext.EndpointDescription.TransportProfileUri != Profiles.HttpsBinaryTransport) ||
-                   (sessionRequired && context.Session == null))
+                    (sessionRequired && context.Session == null) &&
+                    ((applyRestrictionsToBrowseRequired && requestIsBrowseRelated) || !requestIsBrowseRelated)
+                   )
                 {
                     serviceResult = ServiceResult.Create(StatusCodes.BadSecurityModeInsufficient,
                         "Access restricted to nodeId {0} due to insufficient security mode.", nodeMetadata.NodeId);
