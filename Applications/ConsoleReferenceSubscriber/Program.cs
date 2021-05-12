@@ -53,7 +53,7 @@ namespace Quickstarts.ConsoleReferenceSubscriber
             // command line options
             bool showHelp = false;
             bool useMqttJson = true;
-            bool useUdpUadp = false;
+            bool useUdpUadp = true;
             string subscriberUrl = null;
 
             Mono.Options.OptionSet options = new Mono.Options.OptionSet {
