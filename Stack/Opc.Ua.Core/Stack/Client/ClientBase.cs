@@ -537,7 +537,7 @@ namespace Opc.Ua
         {
             if (diagnosticInfos != null && diagnosticInfos.Count > index)
             {
-                return new ServiceResult(statusCode.Code, diagnosticInfos[index], responseHeader.StringTable);
+                return new ServiceResult(statusCode.Code);
             }
 
             return new ServiceResult(statusCode.Code);
