@@ -276,6 +276,61 @@ namespace Opc.Ua.PubSub.Tests.Encoding
             CompareEncodeDecode(uadpDataSetMessage);
         }
 
+        [Test(Description = "Validate MajorMinorVersionDecodeDifference")]
+        public void MajorMinorVersionDecodeDifference(
+            [Values(DataSetFieldContentMask.None, DataSetFieldContentMask.RawData, // list here all possible DataSetFieldContentMask
+            DataSetFieldContentMask.ServerPicoSeconds, DataSetFieldContentMask.ServerTimestamp, DataSetFieldContentMask.SourcePicoSeconds,
+            DataSetFieldContentMask.SourceTimestamp, DataSetFieldContentMask.StatusCode,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.SourcePicoSeconds,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.SourceTimestamp,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.StatusCode,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp| DataSetFieldContentMask.SourcePicoSeconds,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp| DataSetFieldContentMask.SourceTimestamp,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp| DataSetFieldContentMask.StatusCode,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp| DataSetFieldContentMask.SourcePicoSeconds| DataSetFieldContentMask.SourceTimestamp,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp| DataSetFieldContentMask.SourcePicoSeconds| DataSetFieldContentMask.StatusCode,
+            DataSetFieldContentMask.ServerPicoSeconds| DataSetFieldContentMask.ServerTimestamp| DataSetFieldContentMask.SourcePicoSeconds| DataSetFieldContentMask.SourceTimestamp| DataSetFieldContentMask.StatusCode
+            )]
+            DataSetFieldContentMask dataSetFieldContentMask)
+        {
+            // Arrange
+            UadpDataSetMessage uadpDataSetMessage = GetFirstDataSetMessage(dataSetFieldContentMask);
+
+            // Act  
+            uadpDataSetMessage.SetMessageContentMask(UadpDataSetMessageContentMask.MajorVersion | UadpDataSetMessageContentMask.MinorVersion);
+            uadpDataSetMessage.MetaDataVersion.MajorVersion = 2;
+            uadpDataSetMessage.MetaDataVersion.MinorVersion = 101;
+
+            // Assert
+            IServiceMessageContext messageContextEncode = new ServiceMessageContext();
+            byte[] bytes;
+            var memoryStream = new MemoryStream();
+            using (BinaryEncoder encoder = new BinaryEncoder(memoryStream, messageContextEncode, true))
+            {
+                uadpDataSetMessage.Encode(encoder);
+                _ = encoder.Close();
+                bytes = ReadBytes(memoryStream);
+            }
+
+
+            // Change DataSetReader Metadata ConfigurationVersion before decoding
+            DataSetReaderDataType dataSetReaderDataType = (DataSetReaderDataType)m_firstDataSetReaderType.MemberwiseClone();
+            dataSetReaderDataType.DataSetMetaData.ConfigurationVersion.MajorVersion = uadpDataSetMessage.MetaDataVersion.MajorVersion + 1;
+            dataSetReaderDataType.DataSetMetaData.ConfigurationVersion.MinorVersion = uadpDataSetMessage.MetaDataVersion.MinorVersion + 1;
+
+            UadpDataSetMessage uaDataSetMessageDecoded = new UadpDataSetMessage();
+            BinaryDecoder decoder = new BinaryDecoder(bytes, messageContextEncode);
+
+            // workaround
+            uaDataSetMessageDecoded.DataSetWriterId = TestDataSetWriterId;
+            uaDataSetMessageDecoded.DecodePossibleDataSetReader(decoder, dataSetReaderDataType);
+            decoder.Dispose();
+
+            // compare uadpDataSetMessage with uaDataSetMessageDecoded
+            Assert.IsNull(uaDataSetMessageDecoded.DataSet, "Trying to decode a DataSet with a different ConfigurationVersion should return null");
+        }
+
         [Test(Description = "Validate SequenceNumber")]
         public void ValidateSequenceNumber(
             [Values(DataSetFieldContentMask.None, DataSetFieldContentMask.RawData, // list here all possible DataSetFieldContentMask
