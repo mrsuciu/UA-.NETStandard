@@ -954,7 +954,7 @@ namespace Opc.Ua
                     {
                         if (alternateUrl.DnsSafeHost == endpointUrl.DnsSafeHost)
                         {
-                            accessibleAddresses.Add(baseAddress);
+                            accessibleAddresses.Add(new BaseAddress() { Url = alternateUrl, ProfileUri = baseAddress.ProfileUri, DiscoveryUrl = alternateUrl });
                             break;
                         }
                     }
@@ -1258,7 +1258,7 @@ namespace Opc.Ua
             }
 
             // use the message context from the configuration to ensure the channels are using the same one.
-            ServiceMessageContext messageContext = configuration.CreateMessageContext();
+            ServiceMessageContext messageContext = configuration.CreateMessageContext(true);
             messageContext.NamespaceUris = new NamespaceTable();
             MessageContext = messageContext;
 
