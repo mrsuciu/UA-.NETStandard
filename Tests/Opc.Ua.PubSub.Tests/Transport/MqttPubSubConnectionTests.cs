@@ -158,7 +158,8 @@ namespace Opc.Ua.PubSub.Tests.Transport
             //Act
             // it will signal if the uadp message was received from local ip
             m_uaDataShutdownEvent = new ManualResetEvent(false);
-            
+
+            m_isDeltaFrame = false;
             subscriberApplication.DataReceived += UaPubSubApplication_DataReceived;
             subscriberConnection.Start();
 
@@ -417,6 +418,7 @@ namespace Opc.Ua.PubSub.Tests.Transport
             // it will signal if the changed configuration message was received on local ip
             m_uaConfigurationUpdateEvent = new ManualResetEvent(false);
 
+            m_isDeltaFrame = false;
             subscriberApplication.DataReceived += UaPubSubApplication_DataReceived;
             subscriberApplication.MetaDataReceived += UaPubSubApplication_MetaDataReceived;
             subscriberApplication.ConfigurationUpdating += UaPubSubApplication_ConfigurationUpdating;
