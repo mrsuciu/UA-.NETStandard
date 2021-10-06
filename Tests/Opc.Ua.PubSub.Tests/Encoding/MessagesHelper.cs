@@ -35,6 +35,7 @@ using Opc.Ua.PubSub.Transport;
 using Opc.Ua.PubSub.Encoding;
 using System.ComponentModel;
 using System.Threading;
+using Opc.Ua.PubSub.PublishedData;
 
 namespace Opc.Ua.PubSub.Tests.Encoding
 {
@@ -50,7 +51,7 @@ namespace Opc.Ua.PubSub.Tests.Encoding
         internal const string UaMetaDataMessageType = "ua-metadata";
 
         /// <summary>
-        /// PubSub options
+        /// PubSub type options
         /// </summary>
         internal enum PubSubType
         {
@@ -1141,6 +1142,25 @@ namespace Opc.Ua.PubSub.Tests.Encoding
         #region Get UaDataNetwork type messages
 
         /// <summary>
+        /// Get Uadp | Json type entry
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="networkMessages"></param>
+        /// <returns></returns>
+        public static List<T> GetUaDataNetworkMessages<T>(IList<T> networkMessages) where T : UaNetworkMessage
+        {
+            if(typeof(T) == typeof(UadpNetworkMessage))
+            {
+                return GetUadpUaDataNetworkMessages(networkMessages.Cast<UadpNetworkMessage>().ToList()) as List<T>;
+            }
+            if (typeof(T) == typeof(JsonNetworkMessage))
+            {
+                return GetJsonUaDataNetworkMessages(networkMessages.Cast<JsonNetworkMessage>().ToList()) as List<T>;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Get Json ua-data entry
         /// </summary>
         /// <param name="networkMessages"></param>
@@ -1155,7 +1175,7 @@ namespace Opc.Ua.PubSub.Tests.Encoding
         }
 
         /// <summary>
-        /// Get Uadp datasetmessage type entry
+        /// Get Uadp DatasetMessage type entry
         /// </summary>
         /// <param name="networkMessages"></param>
         /// <returns></returns>
@@ -2740,6 +2760,42 @@ namespace Opc.Ua.PubSub.Tests.Encoding
             #endregion
         }
 
+        /// <summary>
+        /// Get datastore data for specified datasets
+        /// </summary>
+        /// <param name="pubSubApplication"></param>
+        /// <param name="uaDataNetworkMessage"></param>
+        /// <param name="namespaceIndexAllTypes"></param>
+        /// <returns></returns>
+        public static Dictionary<NodeId, DataValue> GetDataStoreData(UaPubSubApplication pubSubApplication, UaNetworkMessage uaDataNetworkMessage, UInt16 namespaceIndexAllTypes)
+        {
+            Dictionary<NodeId, DataValue> dataSetsData = new Dictionary<NodeId, DataValue>();
+
+            foreach (UaDataSetMessage datasetMessage in uaDataNetworkMessage.DataSetMessages)
+            {
+                foreach (Field field in datasetMessage.DataSet.Fields)
+                {
+                    NodeId fieldNodeId = new NodeId(field.FieldMetaData.Name, namespaceIndexAllTypes);
+                    DataValue fieldDataValue = pubSubApplication.DataStore.ReadPublishedDataItem(fieldNodeId, Attributes.Value);
+                    if (fieldDataValue != null)
+                    {
+                        if (!dataSetsData.ContainsKey(fieldNodeId))
+                        {
+                            dataSetsData.Add(fieldNodeId, fieldDataValue);
+                        }
+                    }
+                }
+            }
+
+            return dataSetsData;
+        }
+
+        /// <summary>
+        /// Get snapshot data
+        /// </summary>
+        /// <param name="pubSubApplication"></param>
+        /// <param name="namespaceIndexAllTypes"></param>
+        /// <returns></returns>
         public static Dictionary<NodeId, DataValue> GetSnapshotData(UaPubSubApplication pubSubApplication, UInt16 namespaceIndexAllTypes)
         {
             Dictionary<NodeId,DataValue> snapshotData = new Dictionary<NodeId, DataValue>();
@@ -2782,7 +2838,7 @@ namespace Opc.Ua.PubSub.Tests.Encoding
             #region Update DataSet values
             // DataSet update with primitive data
             DataValue boolToggle = pubSubApplication.DataStore.ReadPublishedDataItem(new NodeId("BoolToggle", namespaceIndexAllTypes), Attributes.Value);
-            if(boolToggle.Value is bool)
+            if (boolToggle.Value is bool)
             {
                 bool boolVal = Convert.ToBoolean(boolToggle.Value);
                 boolToggle.Value = !boolVal;
@@ -2796,7 +2852,7 @@ namespace Opc.Ua.PubSub.Tests.Encoding
                 pubSubApplication.DataStore.WritePublishedDataItem(new NodeId("Byte", namespaceIndexAllTypes), Attributes.Value, byteValue);
             }
             DataValue int16Value = pubSubApplication.DataStore.ReadPublishedDataItem(new NodeId("Int16", namespaceIndexAllTypes), Attributes.Value);
-            if(int16Value.Value is Int16)
+            if (int16Value.Value is Int16)
             {
                 Int16 int16Val = Convert.ToInt16(int16Value.Value);
                 int intIdentifier = int16Val;
