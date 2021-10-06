@@ -182,7 +182,7 @@ namespace Opc.Ua.PubSub.Tests.Transport
 #endif
         public void ValidateMqttLocalPubSubConnectionWithDeltaUadp(
             [Values((byte)1, (UInt16)1, (UInt32)1, (UInt64)1, "abc")] object publisherId,
-            [Values(2, 3, 4)] Int32 keyFrameCount)
+            [Values(1, 2, 3, 4)] Int32 keyFrameCount)
         {
             RestartMosquitto();
 
@@ -295,8 +295,7 @@ namespace Opc.Ua.PubSub.Tests.Transport
             }
             if (keyFrameCount > 2)
             {
-                int keyCount = keyFrameCount - 1;
-                while (keyCount > 0)
+                for (int keyCount = 0; keyCount < keyFrameCount - 1; keyCount++)
                 {
                     m_uaDeltaDataShutdownEvent.Reset();
                     m_snapshotData = MessagesHelper.GetSnapshotData(publisherApplication, NamespaceIndexAllTypes);
@@ -305,7 +304,6 @@ namespace Opc.Ua.PubSub.Tests.Transport
                     {
                         Assert.Fail("The UADP delta message was not received");
                     }
-                    keyCount--;
                 }
             }
 
@@ -564,8 +562,7 @@ namespace Opc.Ua.PubSub.Tests.Transport
             }
             if (keyFrameCount > 2)
             {
-                int keyCount = keyFrameCount - 1;
-                while (keyCount > 0)
+                for (int keyCount = 0; keyCount < keyFrameCount - 1; keyCount++)
                 {
                     m_uaDeltaDataShutdownEvent.Reset();
                     m_snapshotData = MessagesHelper.GetSnapshotData(publisherApplication, NamespaceIndexAllTypes);
@@ -574,7 +571,6 @@ namespace Opc.Ua.PubSub.Tests.Transport
                     {
                         Assert.Fail("The JSON delta message was not received");
                     }
-                    keyCount--;
                 }
             }
 
