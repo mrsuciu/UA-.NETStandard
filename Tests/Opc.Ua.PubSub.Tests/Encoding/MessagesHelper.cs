@@ -1155,6 +1155,20 @@ namespace Opc.Ua.PubSub.Tests.Encoding
         }
 
         /// <summary>
+        /// Get Uadp datasetmessage type entry
+        /// </summary>
+        /// <param name="networkMessages"></param>
+        /// <returns></returns>
+        public static List<UadpNetworkMessage> GetUadpUaDataNetworkMessages(IList<UadpNetworkMessage> networkMessages)
+        {
+            if (networkMessages != null)
+            {
+                return networkMessages.Where(x => x.UADPNetworkMessageType == UADPNetworkMessageType.DataSetMessage).ToList();
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Get Json ua-metadata entries
         /// </summary>
         /// <param name="networkMessages"></param>
