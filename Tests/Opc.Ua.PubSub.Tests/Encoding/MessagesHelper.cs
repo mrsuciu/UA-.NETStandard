@@ -930,6 +930,7 @@ namespace Opc.Ua.PubSub.Tests.Encoding
                         };
                         dataSetReaderTransportSettings = new BrokerDataSetReaderTransportDataType() {
                             QueueName = brokerQueueName,
+                            MetaDataQueueName = $"{brokerQueueName}/{brokerMetaData}",
                         };
                         break;
                     case Profiles.PubSubMqttJsonTransport:
