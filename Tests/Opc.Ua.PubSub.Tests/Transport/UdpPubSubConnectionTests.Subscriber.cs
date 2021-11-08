@@ -193,7 +193,9 @@ namespace Opc.Ua.PubSub.Tests.Transport
             Assert.IsNotNull(localhost, "localhost is null");
             Assert.IsNotNull(localhost.Address, "localhost.Address is null");
 
-            IPAddress multicastIPAddress = new IPAddress(new byte[4] { 239, 0, 0, 1 });
+            IPAddress[] multicastIPAddresses = Dns.GetHostAddresses(UdpMulticastIp);
+            Assert.GreaterOrEqual(multicastIPAddresses.Length, 1, "multicastIPAddresses should be greater or equal to 1");
+            IPAddress multicastIPAddress = multicastIPAddresses.First();
             Assert.IsNotNull(multicastIPAddress, "multicastIPAddress is null");
 
             string configurationFile = Utils.GetAbsoluteFilePath(SubscriberConfigurationFileName, true, true, false);
@@ -262,7 +264,9 @@ namespace Opc.Ua.PubSub.Tests.Transport
             Assert.IsNotNull(localhost.Address, "localhost.Address is null");
 
             //discovery IP address 224.0.2.14
-            IPAddress multicastIPAddress = new IPAddress(new byte[4] { 224, 0, 2, 14 });
+            IPAddress[] multicastIPAddresses = Dns.GetHostAddresses(UdpDiscoveryIp);
+            Assert.GreaterOrEqual(multicastIPAddresses.Length, 1, "multicastIPAddresses should be greater or equal to 1");
+            IPAddress multicastIPAddress = multicastIPAddresses.First();
             Assert.IsNotNull(multicastIPAddress, "multicastIPAddress is null");
 
             string configurationFile = Utils.GetAbsoluteFilePath(SubscriberConfigurationFileName, true, true, false);

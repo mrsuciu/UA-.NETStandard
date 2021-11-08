@@ -214,6 +214,7 @@ namespace Opc.Ua.PubSub.Tests.Transport
             Assert.Greater(publisherConfiguration.Connections.Count, 1, "publisherConfiguration.Connection should be > 0");
 
             IPAddress[] multicastIPAddresses = Dns.GetHostAddresses(UdpMulticastIp);
+            Assert.GreaterOrEqual(multicastIPAddresses.Length, 1, "multicastIPAddresses should be greater or equal to 1");
             IPAddress multicastIPAddress = multicastIPAddresses.First();
             Assert.IsNotNull(multicastIPAddress, "multicastIPAddress is null");
 
@@ -290,6 +291,7 @@ namespace Opc.Ua.PubSub.Tests.Transport
 
             //discovery IP adress 224.0.2.14
             IPAddress[] multicastIPAddresses =  Dns.GetHostAddresses(UdpDiscoveryIp);
+            Assert.GreaterOrEqual(multicastIPAddresses.Length, 1, "multicastIPAddresses should be greater or equal to 1");
             IPAddress multicastIPAddress = multicastIPAddresses.First();
             Assert.IsNotNull(multicastIPAddress, "multicastIPAddress is null");
 
