@@ -14,10 +14,6 @@
     <None Remove="Quickstarts.MonoReferenceServer.Config.xml" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="..\ReferenceServer\SerilogTraceLogger.cs" Exclude="bin\**;obj\**;**\*.xproj;packages\**" />
-  </ItemGroup>
-
   <ItemGroup Condition=" '$(NoHttps)' != 'true' ">
     <ProjectReference Include="..\..\Stack\Opc.Ua.Bindings.Https\Opc.Ua.Bindings.Https.csproj" />
   </ItemGroup>
