@@ -3,30 +3,30 @@
     <!-- Visual Studio 2022 -->
     <When  Condition="'$(VisualStudioVersion)' == '17.0'">
       <PropertyGroup>
-        <AppTargetFrameworks>net462;netcoreapp5.0;net6.0</AppTargetFrameworks>
+        <AppTargetFrameworks>netcoreapp5.0;net6.0</AppTargetFrameworks>
         <AppTargetFramework>net6.0</AppTargetFramework>
-        <TestsTargetFrameworks>net462;netcoreapp2.1;netcoreapp5.0;net6.0</TestsTargetFrameworks>
-        <LibTargetFrameworks>net462;netstandard2.0;netstandard2.1;net6.0</LibTargetFrameworks>
-        <LibxTargetFrameworks>net462;netcoreapp2.1;netstandard2.1;net6.0</LibxTargetFrameworks>
+        <TestsTargetFrameworks>netcoreapp2.1;netcoreapp5.0;net6.0</TestsTargetFrameworks>
+        <LibTargetFrameworks>netstandard2.0;netstandard2.1;net6.0</LibTargetFrameworks>
+        <LibxTargetFrameworks>netcoreapp2.1;netstandard2.1;net6.0</LibxTargetFrameworks>
       </PropertyGroup>
     </When>
     <!-- Visual Studio 2019 -->
     <When  Condition="'$(VisualStudioVersion)' == '16.0'">
       <PropertyGroup>
-        <AppTargetFrameworks>net462;netcoreapp5.0</AppTargetFrameworks>
+        <AppTargetFrameworks>netcoreapp5.0</AppTargetFrameworks>
         <AppTargetFramework>netcoreapp5.0</AppTargetFramework>
-        <TestsTargetFrameworks>net462;netcoreapp2.1;netcoreapp5.0</TestsTargetFrameworks>
-        <LibTargetFrameworks>net462;netstandard2.0;netstandard2.1</LibTargetFrameworks>
-        <LibxTargetFrameworks>net462;netcoreapp2.1;netstandard2.1</LibxTargetFrameworks>
+        <TestsTargetFrameworks>netcoreapp2.1;netcoreapp5.0</TestsTargetFrameworks>
+        <LibTargetFrameworks>netstandard2.0;netstandard2.1</LibTargetFrameworks>
+        <LibxTargetFrameworks>netcoreapp2.1;netstandard2.1</LibxTargetFrameworks>
       </PropertyGroup>
     </When>
     <Otherwise>
       <PropertyGroup>
-        <AppTargetFrameworks>net462;netcoreapp2.1</AppTargetFrameworks>
+        <AppTargetFrameworks>netcoreapp2.1</AppTargetFrameworks>
         <AppTargetFramework>netcoreapp2.1</AppTargetFramework>
         <TestsTargetFrameworks>netcoreapp2.1</TestsTargetFrameworks>
-        <LibTargetFrameworks>net462;netstandard2.0</LibTargetFrameworks>
-        <LibxTargetFrameworks>net462;netcoreapp2.1</LibxTargetFrameworks>
+        <LibTargetFrameworks>netstandard2.0</LibTargetFrameworks>
+        <LibxTargetFrameworks>netcoreapp2.1</LibxTargetFrameworks>
       </PropertyGroup>
     </Otherwise>
   </Choose>
