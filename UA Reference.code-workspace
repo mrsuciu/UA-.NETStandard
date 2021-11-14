@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "Stack/Opc.Ua.Core"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Client"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Configuration"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Client.ComplexTypes"
+		},
+		{
+			"path": "Applications/ConsoleReferenceServer"
+		},
+		{
+			"path": "Applications/ConsoleReferenceClient"
+		},
+		{
+			"path": "Stack/Opc.Ua.Bindings.Https"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Security.Certificates"
+		}
+	]
+}
