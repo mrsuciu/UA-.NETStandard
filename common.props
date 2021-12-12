@@ -7,7 +7,7 @@
     <Copyright>Copyright © 2004-2021 OPC Foundation, Inc</Copyright>
     <Company>OPC Foundation</Company>
     <Authors>OPC Foundation</Authors>
-    <NoWarn>NU5125;RCS1138;RCS1139;NETSDK1138</NoWarn>
+    <NoWarn>NU5125;RCS1138;RCS1139;RCS1075;NETSDK1138</NoWarn>
     <NeutralLanguage>en-US</NeutralLanguage>
     <HighEntropyVA>true</HighEntropyVA>
     <IsPackable>false</IsPackable>
@@ -33,8 +33,12 @@
     <None Include="$(MSBuildThisFileDirectory)/nuget/logo.jpg" Pack="true" PackagePath="$(PackageIcon)"/>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(RCS)' == 'true'">
+    <PackageReference Include="Roslynator.Analyzers" Version="3.3.0" PrivateAssets="All" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(NBGV_PublicRelease)' != ''">
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All"/>
   </ItemGroup>
   
   <!-- Deterministic build is currently not supported for code coverage tests. -->
