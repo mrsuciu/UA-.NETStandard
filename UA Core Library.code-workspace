@@ -1,0 +1,62 @@
+{
+	"folders": [
+		{
+			"path": "Stack/Opc.Ua.Core"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Server"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Configuration"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Client"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Gds.Client.Common"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Gds.Server.Common"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Client.ComplexTypes"
+		},
+		{
+			"path": "Tests/Opc.Ua.Core.Tests"
+		},
+		{
+			"path": "Tests/Opc.Ua.Client.ComplexTypes.Tests"
+		},
+		{
+			"path": "Tests/Opc.Ua.Gds.Tests"
+		},
+		{
+			"path": "Stack/Opc.Ua.Bindings.Https"
+		},
+		{
+			"path": "Libraries/Opc.Ua.PubSub"
+		},
+		{
+			"path": "Libraries/Opc.Ua.Security.Certificates"
+		},
+		{
+			"path": "Tests/Opc.Ua.Security.Certificates.Tests"
+		},
+		{
+			"path": "Tests/Opc.Ua.PubSub.Tests"
+		},
+		{
+			"path": "Tests/Opc.Ua.Configuration.Tests"
+		},
+		{
+			"path": "Tests/Opc.Ua.Server.Tests"
+		},
+		{
+			"path": "Tests/Opc.Ua.Client.Tests"
+		},
+		{
+			"path": "Applications/ConsoleReferenceServer"
+		},
+	],
+	"settings": {}
+}
