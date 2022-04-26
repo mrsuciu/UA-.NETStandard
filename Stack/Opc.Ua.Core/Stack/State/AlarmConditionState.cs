@@ -1,6 +1,6 @@
-/* Copyright (c) 1996-2020 The OPC Foundation. All rights reserved.
+/* Copyright (c) 1996-2022 The OPC Foundation. All rights reserved.
    The source code in this file is covered under a dual-license scenario:
-     - RCL: for OPC Foundation members in good-standing
+     - RCL: for OPC Foundation Corporate Members in good-standing
      - GPL V2: everybody else
    RCL license terms accompanied with this source code. See http://opcfoundation.org/License/RCL/1.00/
    GNU General Public License as published by the Free Software Foundation;
@@ -280,7 +280,7 @@ namespace Opc.Ua
 
                 // Unshelve time is still valid even for OneShotShelved -  See Mantis 6462
 
-                double maxTimeShelved = (double)int.MaxValue;
+                double maxTimeShelved = double.MaxValue;
                 if ( this.MaxTimeShelved != null && this.MaxTimeShelved.Value > 0 )
                 {
                     maxTimeShelved = this.MaxTimeShelved.Value;
@@ -309,6 +309,61 @@ namespace Opc.Ua
 
             UpdateEffectiveState(context);
         }
+
+        /// <summary>
+        /// Determines the desired Retain state based off of the values of AckedState and
+        /// ConfirmedState if ConfirmedState is supported
+        /// </summary>
+        /// <remarks>
+        /// All implementations of this method should check the enabled state
+        /// </remarks>
+        protected override bool GetRetainState()
+        {
+            bool retainState = false;
+
+            if (this.EnabledState.Id.Value)
+            {
+                retainState = base.GetRetainState();
+
+                if (!IsBranch())
+                {
+                    if (this.ActiveState.Id.Value)
+                    {
+                        retainState = true;
+                    }
+                }
+            }
+
+            return retainState;
+        }
+
+        /// <summary>
+        /// Returns the method with the specified NodeId or MethodDeclarationId.  Looks specifically for
+        /// Shelving State Methods
+        /// </summary>
+        /// <param name="context">The system context.</param>
+        /// <param name="methodId">The identifier for the method to find.</param>
+        /// <returns>Returns the method. Null if no method found.</returns>
+        /// <remarks>
+        /// It is possible to call ShelvingState Methods by using only the ConditionId (1.04 Part 9 5.8.10.4).
+        /// Look to the Shelving State object for the method if it cannot be found by the normal mechanism.
+        /// </remarks>
+
+        public override MethodState FindMethod(ISystemContext context, NodeId methodId)
+        {
+            MethodState method = base.FindMethod(context, methodId);
+
+            if ( method == null )
+            {
+                if ( this.ShelvingState != null )
+                {
+                    method = this.ShelvingState.FindMethod(context, methodId);
+                }
+            }
+
+            return method;
+        }
+
         #endregion
 
         #region Event Handlers

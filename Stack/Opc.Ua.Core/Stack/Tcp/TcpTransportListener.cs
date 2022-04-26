@@ -1,6 +1,6 @@
-/* Copyright (c) 1996-2020 The OPC Foundation. All rights reserved.
+/* Copyright (c) 1996-2022 The OPC Foundation. All rights reserved.
    The source code in this file is covered under a dual-license scenario:
-     - RCL: for OPC Foundation members in good-standing
+     - RCL: for OPC Foundation Corporate Members in good-standing
      - GPL V2: everybody else
    RCL license terms accompanied with this source code. See http://opcfoundation.org/License/RCL/1.00/
    GNU General Public License as published by the Free Software Foundation;
@@ -321,7 +321,7 @@ namespace Opc.Ua.Bindings
                         m_listeningSocket.Dispose();
                         m_listeningSocket = null;
                     }
-                    Utils.LogWarning("failed to create IPv4 listening socket: " + ex.Message);
+                    Utils.LogWarning("Failed to create IPv4 listening socket: {0}", ex.Message);
                 }
 
                 if (ipAddress == IPAddress.Any)
@@ -349,7 +349,7 @@ namespace Opc.Ua.Bindings
                             m_listeningSocketIPv6.Dispose();
                             m_listeningSocketIPv6 = null;
                         }
-                        Utils.LogWarning("failed to create IPv6 listening socket: " + ex.Message);
+                        Utils.LogWarning("Failed to create IPv6 listening socket: {0}", ex.Message);
                     }
                 }
                 if (m_listeningSocketIPv6 == null && m_listeningSocket == null)
