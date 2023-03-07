@@ -16,6 +16,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Opc.Ua.Bindings
 {
@@ -125,6 +126,9 @@ namespace Opc.Ua.Bindings
             m_name = name;
             m_arrayPool = ArrayPool<byte>.Create(maxArrayLength, 4);
             m_maxBufferSize = maxBufferSize;
+
+            m_maxBuffersInUse = maxPoolSize;
+
         }
         #endregion
 
@@ -144,6 +148,13 @@ namespace Opc.Ua.Bindings
 
             lock (m_lock)
             {
+                // wait for a buffer to become available.
+                // while (m_buffersInUse >= m_maxBuffersInUse)
+                // {
+                //     Thread.Sleep(100);
+                //     System.Threading.Monitor.Wait(m_lockNotif);
+                // }
+
                 byte[] buffer = m_arrayPool.Rent(size + m_cookieLength);
 #if TRACK_MEMORY
                 byte[] bytes = BitConverter.GetBytes(++m_id);
@@ -164,6 +175,9 @@ namespace Opc.Ua.Bindings
                 Utils.EventLog.Trace("{0:X}:TakeBuffer({1:X},{2:X},{3},{4})", this.GetHashCode(), buffer.GetHashCode(), buffer.Length, owner, ++m_buffersTaken);
 #endif
                 buffer[buffer.Length - 1] = m_cookieUnlocked;
+                
+                m_buffersInUse++;
+
                 return buffer;
             }
         }
@@ -332,18 +346,39 @@ namespace Opc.Ua.Bindings
                 }
 #endif
                 m_arrayPool.Return(buffer);
+                m_buffersInUse--;
+
+                // notify anyone waiting for a buffer.
+                // lock (m_lockNotif)
+                // {
+                //     Monitor.PulseAll(m_lockNotif);
+                // }
+            }
+        }
+
+        internal int GetBufferCount()
+        {
+            lock (m_lock)
+            {
+                return m_buffersInUse;
             }
         }
         #endregion
 
         #region Private Fields
         private object m_lock = new object();
+        private object m_lockNotif = new object();
         private string m_name;
         private int m_maxBufferSize;
+
+        private int m_buffersInUse = 0;
+        private int m_maxBuffersInUse = 0;
+
 #if TRACE_MEMORY
         private int m_buffersTaken = 0;
 #endif
         private ArrayPool<byte> m_arrayPool;
+        
         const byte m_cookieLocked = 0xa5;
         const byte m_cookieUnlocked = 0x5a;
 #if TRACK_MEMORY

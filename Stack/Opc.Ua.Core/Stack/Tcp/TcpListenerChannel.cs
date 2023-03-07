@@ -192,6 +192,12 @@ namespace Opc.Ua.Bindings
                         response,
                         false,
                         out limitsExceeded);
+
+                    if (limitsExceeded)
+                    {
+                        //Utils.Trace("Limits exceeded for response to request {0}.", requestId);
+                        return;
+                    }
                 }
                 catch (Exception e)
                 {

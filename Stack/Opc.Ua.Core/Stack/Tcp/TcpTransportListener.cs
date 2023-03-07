@@ -136,7 +136,7 @@ namespace Opc.Ua.Bindings
             m_serverCertificate = settings.ServerCertificate;
             m_serverCertificateChain = settings.ServerCertificateChain;
 
-            m_bufferManager = new BufferManager("Server", (int)Int32.MaxValue, m_quotas.MaxBufferSize);
+            m_bufferManager = new BufferManager("Server", 100, m_quotas.MaxBufferSize);
             m_channels = new Dictionary<uint, TcpListenerChannel>();
             m_reverseConnectListener = settings.ReverseConnectListener;
 
@@ -300,7 +300,7 @@ namespace Opc.Ua.Bindings
                 {
                     ipAddress = IPAddress.Parse(m_uri.Host);
                 }
-             
+
                 // create IPv4 or IPv6 socket.
                 try
                 {

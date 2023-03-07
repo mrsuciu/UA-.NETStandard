@@ -514,7 +514,7 @@ namespace Opc.Ua.Server
                 systemContext = this.SystemContext;
             }
 
-            Server.ConditionRefresh(systemContext.OperationContext, subscriptionId);
+            //Server.ConditionRefresh(systemContext.OperationContext, subscriptionId);
 
             return ServiceResult.Good;
         }

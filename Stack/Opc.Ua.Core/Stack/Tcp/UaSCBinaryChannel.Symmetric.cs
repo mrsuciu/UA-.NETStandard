@@ -262,6 +262,14 @@ namespace Opc.Ua.Bindings
 
             try
             {
+                // Check if BufferManager has enough buffers to process the message.
+                // If not, return limitsExceeded = true.
+                if (BufferManager.GetBufferCount() >= 2000)
+                {
+                    limitsExceeded = true;
+                    return null;
+                }
+
                 // calculate chunk sizes.
                 int maxCipherTextSize = SendBufferSize - TcpMessageLimits.SymmetricHeaderSize;
                 int maxCipherBlocks = maxCipherTextSize / EncryptionBlockSize;

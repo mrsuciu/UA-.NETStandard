@@ -321,7 +321,7 @@ namespace Opc.Ua.Bindings
         /// <exception cref="System.ObjectDisposedException">The System.Net.Sockets.Socket has been closed.</exception>
         /// <returns>The System.Net.EndPoint that the System.Net.Sockets.Socket is using for communications.</returns>
         public EndPoint LocalEndpoint => m_socket.LocalEndPoint;
-        
+
         /// <summary>
         /// Gets the transport channel features implemented by this message socket.
         /// </summary>
@@ -530,9 +530,33 @@ namespace Opc.Ua.Bindings
             {
                 ServiceResult error = null;
 
+
                 try
                 {
+                    
+                    int bufferCount = m_bufferManager.GetBufferCount();
+                    // check if buffermanager taken buffers are below the threshold
+                    if (bufferCount >= 200)
+                    {
+                        //Utils.Trace("BufferManager buffer count is {0}", m_bufferManager.GetBufferCount());
+                        //m_readState = ReadState.Error;
+                        error = ServiceResult.Create(StatusCodes.BadTcpInternalError,  "BufferCount too high {0}", bufferCount);
+
+                        if (m_receiveBuffer != null)
+                        {
+                            lock (m_socketLock)
+                            {
+                                BufferManager.UnlockBuffer(m_receiveBuffer);
+                            }
+                            m_bufferManager.ReturnBuffer(m_receiveBuffer, "OnReadComplete");
+                            m_receiveBuffer = null;
+                        }
+
+                        m_sink?.OnReceiveError(this, error);
+                    }
+
                     bool innerCall = m_readState == ReadState.ReadComplete;
+
                     error = DoReadComplete(e);
                     // to avoid recursion, inner calls of OnReadComplete return
                     // after processing the ReadComplete and let the outer call handle it
