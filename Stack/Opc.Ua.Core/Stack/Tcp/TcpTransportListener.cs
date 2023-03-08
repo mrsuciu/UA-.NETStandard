@@ -504,7 +504,8 @@ namespace Opc.Ua.Bindings
                                 channel = new TcpServerChannel(
                                     m_listenerId,
                                     this,
-                                    m_bufferManager,
+                                    //m_bufferManager,
+                                    new BufferManager("ServerAcceptedConnection", 100, m_quotas.MaxBufferSize),
                                     m_quotas,
                                     m_serverCertificate,
                                     m_serverCertificateChain,
