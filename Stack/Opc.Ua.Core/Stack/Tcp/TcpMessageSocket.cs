@@ -530,31 +530,30 @@ namespace Opc.Ua.Bindings
             {
                 ServiceResult error = null;
 
-
                 try
                 {
+                    bool quotaInLimits = m_bufferManager.InAllowedBuffersQuota();
+                    if (!quotaInLimits)
+                    {
+                        m_readState = ReadState.Error;
+                        error = ServiceResult.Create(StatusCodes.BadTcpInternalError, "BufferCount too high");
+
+                        if (m_receiveBuffer != null)
+                        {
+                            lock (m_socketLock)
+                            {
+                                BufferManager.UnlockBuffer(m_receiveBuffer);
+                            }
+                            m_bufferManager.ReturnBuffer(m_receiveBuffer, "OnReadComplete");
+                            m_receiveBuffer = null;
+                        }
+
+                        m_sink?.OnReceiveError(this, error);
+                        Close();
+                        Utils.Trace("BufferManager allocated buffer quota exceeded while reading data from channel");
+                        return;
+                    }
                     
-                    int bufferCount = m_bufferManager.GetBufferCount();
-                    // check if buffermanager taken buffers are below the threshold
-                    //if (bufferCount >= 200)
-                    //{
-                    //    //Utils.Trace("BufferManager buffer count is {0}", m_bufferManager.GetBufferCount());
-                    //    //m_readState = ReadState.Error;
-                    //    error = ServiceResult.Create(StatusCodes.BadTcpInternalError,  "BufferCount too high {0}", bufferCount);
-
-                    //    if (m_receiveBuffer != null)
-                    //    {
-                    //        lock (m_socketLock)
-                    //        {
-                    //            BufferManager.UnlockBuffer(m_receiveBuffer);
-                    //        }
-                    //        m_bufferManager.ReturnBuffer(m_receiveBuffer, "OnReadComplete");
-                    //        m_receiveBuffer = null;
-                    //    }
-
-                    //    m_sink?.OnReceiveError(this, error);
-                    //}
-
                     bool innerCall = m_readState == ReadState.ReadComplete;
 
                     error = DoReadComplete(e);

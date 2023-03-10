@@ -193,9 +193,10 @@ namespace Opc.Ua.Bindings
                         false,
                         out limitsExceeded);
 
-                    if (limitsExceeded)
+                    if (!BufferManager.InAllowedBuffersQuota())
                     {
-                        //Utils.Trace("Limits exceeded for response to request {0}.", requestId);
+                        ChannelClosed();
+                        Utils.Trace("BufferManager allocated buffer quota exceeded for response to request {0}.", requestId);
                         return;
                     }
                 }
@@ -485,6 +486,13 @@ namespace Opc.Ua.Bindings
                     response,
                     false,
                     out limitsExceeded);
+
+                if (!BufferManager.InAllowedBuffersQuota())
+                {
+                    ChannelClosed();
+                    Utils.Trace("BufferManager allocated buffer quota exceeded for response fault to request {0}.", requestId);
+                    return;
+                }
 
                 // send message.
                 BeginWriteMessage(buffers, null);

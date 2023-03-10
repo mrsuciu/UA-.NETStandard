@@ -1,0 +1,1 @@
+for /d /r "." %%a in (obj\) do if exist "%%a" rmdir /s /q "%%a"
