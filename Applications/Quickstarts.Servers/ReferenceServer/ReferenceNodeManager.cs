@@ -30,6 +30,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Xml;
@@ -37,6 +38,9 @@ using Opc.Ua;
 using Opc.Ua.Server;
 using Opc.Ua.Test;
 using Range = Opc.Ua.Range;
+
+//using System.Reflection;
+//using TypeInfo = Opc.Ua.TypeInfo;
 
 namespace Quickstarts.ReferenceServer
 {
@@ -1460,6 +1464,30 @@ namespace Quickstarts.ReferenceServer
                     BaseDataVariableState myCompanyInstructions = CreateVariable(myCompanyFolder, myCompany + "Instructions", "Instructions", DataTypeIds.String, ValueRanks.Scalar);
                     myCompanyInstructions.Value = "A place for the vendor to describe their address-space.";
                     variables.Add(myCompanyInstructions);
+                    #endregion
+
+                    #region MyOrderedList
+
+                    FolderState myOrderedListFolder = CreateFolder(root, "MyOrderedList", "MyOrderedList");
+                    const string myOrderedList = "MyOrderedList_";
+
+                    SystemContext.NodeStateFactory.RegisterType(ObjectTypeIds.OrderedListType, typeof(OrderedListState));
+
+                    BaseInstanceState ordList = SystemContext.NodeStateFactory.CreateInstance(
+                        SystemContext,
+                        myOrderedListFolder,
+                        NodeClass.ReferenceType,
+                        null,
+                        ReferenceTypeIds.HasComponent,
+                        Opc.Ua.ObjectTypeIds.OrderedListType) as BaseInstanceState;
+
+                    if (ordList != null)
+                    {
+                        ordList.TypeDefinitionId = Opc.Ua.ObjectTypeIds.OrderedListType;
+                        ordList.Create(SystemContext, null, new QualifiedName(myOrderedList, NamespaceIndex), myOrderedList, true);                    
+                    }
+                    myOrderedListFolder.AddChild(ordList);
+
                     #endregion
                 }
                 catch (Exception e)
