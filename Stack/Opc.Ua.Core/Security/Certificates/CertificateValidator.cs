@@ -119,11 +119,11 @@ namespace Opc.Ua
 
                 if (trustedStore != null)
                 {
-                    m_trustedCertificateStore = new CertificateStoreIdentifier();
-
-                    m_trustedCertificateStore.StoreType = trustedStore.StoreType;
-                    m_trustedCertificateStore.StorePath = trustedStore.StorePath;
-                    m_trustedCertificateStore.ValidationOptions = trustedStore.ValidationOptions;
+                    m_trustedCertificateStore = new CertificateStoreIdentifier {
+                        StoreType = trustedStore.StoreType,
+                        StorePath = trustedStore.StorePath,
+                        ValidationOptions = trustedStore.ValidationOptions
+                    };
 
                     if (trustedStore.TrustedCertificates != null)
                     {
@@ -137,11 +137,11 @@ namespace Opc.Ua
 
                 if (issuerStore != null)
                 {
-                    m_issuerCertificateStore = new CertificateStoreIdentifier();
-
-                    m_issuerCertificateStore.StoreType = issuerStore.StoreType;
-                    m_issuerCertificateStore.StorePath = issuerStore.StorePath;
-                    m_issuerCertificateStore.ValidationOptions = issuerStore.ValidationOptions;
+                    m_issuerCertificateStore = new CertificateStoreIdentifier {
+                        StoreType = issuerStore.StoreType,
+                        StorePath = issuerStore.StorePath,
+                        ValidationOptions = issuerStore.ValidationOptions
+                    };
 
                     if (issuerStore.TrustedCertificates != null)
                     {
@@ -192,19 +192,16 @@ namespace Opc.Ua
                 {
                     m_minimumCertificateKeySize = configuration.MinimumCertificateKeySize;
                 }
+                if ((m_protectFlags & ProtectFlags.MinimumECCertificateKeySize) == 0)
+                {
+                    m_minimumECCertificateKeySize = configuration.MinimumECCertificateKeySize;
+                }
                 if ((m_protectFlags & ProtectFlags.UseValidatedCertificates) == 0)
                 {
                     m_useValidatedCertificates = configuration.UseValidatedCertificates;
                 }
             }
-            /*
-                        if (configuration.ApplicationCertificate != null)
-                        {
-                            m_applicationCertificate = await configuration.ApplicationCertificate.Find(true).ConfigureAwait(false);
 
-                            // TODO
-                        }
-            */
             return Task.CompletedTask;
         }
 
@@ -216,13 +213,13 @@ namespace Opc.Ua
             // TODO
             lock (m_lock)
             {
-                foreach (var applicationCertificate in securityConfiguration.ApplicationCertificates)
+                foreach (var applicationCertificate in securityConfiguration.ListOfCertificateIdentifier)
                 {
                     applicationCertificate.DisposeCertificate();
                 }
             }
 
-            foreach (var applicationCertificate in securityConfiguration.ApplicationCertificates)
+            foreach (var applicationCertificate in securityConfiguration.ListOfCertificateIdentifier)
             {
                 await applicationCertificate.LoadPrivateKeyEx(
                     securityConfiguration.CertificatePasswordProvider).ConfigureAwait(false);
@@ -316,7 +313,7 @@ namespace Opc.Ua
         }
 
         /// <summary>
-        /// The minimum size of a certificate key to be trusted.
+        /// The minimum size of an RSA certificate key to be trusted.
         /// </summary>
         public ushort MinimumCertificateKeySize
         {
@@ -329,6 +326,26 @@ namespace Opc.Ua
                     if (m_minimumCertificateKeySize != value)
                     {
                         m_minimumCertificateKeySize = value;
+                        ResetValidatedCertificates();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// The minimum size of an Eliptic Curve certificate key to be trusted.
+        /// </summary>
+        public ushort MinimumECCertificateKeySize
+        {
+            get => m_minimumECCertificateKeySize;
+            set
+            {
+                lock (m_lock)
+                {
+                    m_protectFlags |= ProtectFlags.MinimumECCertificateKeySize;
+                    if (m_minimumECCertificateKeySize != value)
+                    {
+                        m_minimumECCertificateKeySize = value;
                         ResetValidatedCertificates();
                     }
                 }
@@ -1209,7 +1226,12 @@ namespace Opc.Ua
             }
             else
             {
-                // TODO: check if curve type is secure enough for profile
+                // check if curve type is secure enough for profile
+                if (!IsECSecureForProfile(certificate, m_minimumECCertificateKeySize))
+                {
+                    sresult = new ServiceResult(StatusCodes.BadCertificatePolicyCheckFailed,
+                        null, null, "Certificate doesn't meet minimum security level requirement.", null, sresult);
+                }
             }
 
             if (issuedByCA && chainIncomplete)
@@ -1618,6 +1640,35 @@ namespace Opc.Ua
             }
             return domainFound;
         }
+
+        /// <summary>
+        /// Returns if the certificate is secure enough for the profile.
+        /// </summary>
+        /// <param name="certificate">The certificate to check.</param>
+        /// <param name="requiredKeySizeInBits">The required key size in bits.</param>
+        public static bool IsECSecureForProfile(X509Certificate2 certificate, int requiredKeySizeInBits)
+        {
+            using (ECDsa ecdsa = certificate.GetECDsaPublicKey())
+            {
+                if (ecdsa == null)
+                {
+                    throw new ArgumentException("Certificate does not contain an ECC public key");
+                }
+
+                ECCurve curve = ecdsa.ExportParameters(false).Curve;
+
+                int curveKeySizeInBits = curve.Order.Length * 8;
+
+                // Check if the curve key size is at least as large as the required key size
+                if (curveKeySizeInBits < requiredKeySizeInBits)
+                {
+                    return false;
+                }
+
+                // The curve is secure enough for the profile
+                return true;
+            }
+        }
         #endregion
 
         #region Private Enum
@@ -1632,7 +1683,8 @@ namespace Opc.Ua
             RejectSHA1SignedCertificates = 2,
             RejectUnknownRevocationStatus = 4,
             MinimumCertificateKeySize = 8,
-            UseValidatedCertificates = 16
+            MinimumECCertificateKeySize = 16,
+            UseValidatedCertificates = 32
         };
         #endregion
 
@@ -1653,6 +1705,7 @@ namespace Opc.Ua
         private bool m_rejectSHA1SignedCertificates;
         private bool m_rejectUnknownRevocationStatus;
         private ushort m_minimumCertificateKeySize;
+        private ushort m_minimumECCertificateKeySize;
         private bool m_useValidatedCertificates;
         #endregion
     }
