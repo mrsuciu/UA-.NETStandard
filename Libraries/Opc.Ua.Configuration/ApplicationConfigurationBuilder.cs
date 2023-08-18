@@ -104,13 +104,7 @@ namespace Opc.Ua.Configuration
             var rejectedRootType = CertificateStoreIdentifier.DetermineStoreType(rejectedRoot);
             ApplicationConfiguration.SecurityConfiguration = new SecurityConfiguration {
                 // app cert store
-#pragma warning disable CS0618 // Type or member is obsolete
-                ApplicationCertificate = new CertificateIdentifier() {
-#pragma warning restore CS0618 // Type or member is obsolete
-                    StoreType = appStoreType,
-                    StorePath = DefaultCertificateStorePath(TrustlistType.Application, appRoot),
-                    SubjectName = Utils.ReplaceDCLocalhost(subjectName)
-                },
+                ApplicationCertificates = CreateDefaultApplicationCertificates(appRoot),
                 // App trusted & issuer
                 TrustedPeerCertificates = new CertificateTrustList() {
                     StoreType = pkiRootType,
@@ -150,7 +144,8 @@ namespace Opc.Ua.Configuration
                 RejectUnknownRevocationStatus = true,
                 SuppressNonceValidationErrors = false,
                 SendCertificateChain = true,
-                MinimumCertificateKeySize = CertificateFactory.DefaultKeySize
+                MinimumCertificateKeySize = CertificateFactory.DefaultKeySize,
+                MinimumECCertificateKeySize = CertificateFactory.DefaultECCKeySize,
             };
 
             return this;
@@ -314,9 +309,9 @@ namespace Opc.Ua.Configuration
         }
 
         /// <inheritdoc/>
-        public IApplicationConfigurationBuilderSecurityOptions SetListOfCertificateIdentifier(CertificateIdentifierCollection certIdList)
+        public IApplicationConfigurationBuilderSecurityOptions SetApplicationCertificates(CertificateIdentifierCollection certIdList)
         {
-            ApplicationConfiguration.SecurityConfiguration.ListOfCertificateIdentifier = certIdList;
+            ApplicationConfiguration.SecurityConfiguration.ApplicationCertificates = certIdList;
             return this;
         }
 
@@ -784,6 +779,62 @@ namespace Opc.Ua.Configuration
         }
         #endregion
 
+        #region Public Static Methods
+
+        /// <summary>
+        /// Create ApplicationCertificates from a PKI root.
+        /// </summary>
+        /// <param name="pkiRoot">The PKI root.</param>
+        /// <returns>The application certificates.</returns>
+
+        public static CertificateIdentifierCollection CreateDefaultApplicationCertificates(string pkiRoot)
+        {
+            CertificateIdentifierCollection certificateIdentifiers = new CertificateIdentifierCollection{
+                new CertificateIdentifier {
+                    StoreType = "Directory",
+                    StorePath = pkiRoot,
+                    SubjectName = "N=Quickstart Reference Server, C=US, S=Arizona, O=OPC Foundation, DC=localhost",
+                    CertificateType = new NodeId ("i=12560") // RSA
+                },
+                new CertificateIdentifier {
+                    StoreType = "Directory",
+                    StorePath = pkiRoot,
+                    SubjectName = "CN=Quickstart Reference Server, C=US, S=Arizona, O=OPC Foundation, DC=localhost",
+                    CertificateType = new NodeId ("i=23538") // Nistp256
+                },
+                new CertificateIdentifier {
+                    StoreType = "Directory",
+                    StorePath = pkiRoot,
+                    SubjectName = "CN=Quickstart Reference Server, C=US, S=Arizona, O=OPC Foundation, DC=localhost",
+                    CertificateType = new NodeId ("i=23539") // Nistp384
+                }
+            };
+
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                certificateIdentifiers.AddRange(
+                    new CertificateIdentifierCollection
+                    {
+                        new CertificateIdentifier { 
+                            StoreType = "Directory",
+                            StorePath = pkiRoot,
+                            SubjectName = "CN=Quickstart Reference Server, C=US, S=Arizona, O=OPC Foundation, DC=localhost",
+                            CertificateType = new NodeId ("i=23540") // BrainpoolP256r1
+                        },
+                        new CertificateIdentifier { 
+                            StoreType = "Directory",
+                            StorePath = pkiRoot,
+                            SubjectName = "CN=Quickstart Reference Server, C=US, S=Arizona, O=OPC Foundation, DC=localhost",
+                            CertificateType = new NodeId ("i=23541") // BrainpoolP384r1
+                        }
+                    });
+            }
+
+            return certificateIdentifiers;
+
+        }
+        #endregion
+
         #region Private Methods
         /// <summary>
         /// Internal enumeration of supported trust lists.
@@ -968,5 +1019,6 @@ namespace Opc.Ua.Configuration
         #region Private Fields
         private bool m_typeSelected;
         #endregion
+        
     }
 }

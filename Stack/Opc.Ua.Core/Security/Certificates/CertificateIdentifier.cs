@@ -1057,21 +1057,21 @@ namespace Opc.Ua
             if (securityPolicyUri == SecurityPolicies.None)
             {
                 // return the default certificate for None
-                return m_securityConfiguration.ApplicationCertificate.Certificate;
+                return m_securityConfiguration.ApplicationCertificates.FirstOrDefault().Certificate;
             }
             var certificateTypes = CertificateIdentifier.MapSecurityPolicyToCertificateTypes(securityPolicyUri);
             foreach (var certType in certificateTypes)
             {
-                var instanceCertificate = m_securityConfiguration.ListOfCertificateIdentifier.FirstOrDefault(id => id.CertificateType == certType);
+                var instanceCertificate = m_securityConfiguration.ApplicationCertificates.FirstOrDefault(id => id.CertificateType == certType);
                 if (instanceCertificate == null &&
                     certType == ObjectTypeIds.RsaSha256ApplicationCertificateType)
                 {
-                    instanceCertificate = m_securityConfiguration.ListOfCertificateIdentifier.FirstOrDefault(id => id.CertificateType == null);
+                    instanceCertificate = m_securityConfiguration.ApplicationCertificates.FirstOrDefault(id => id.CertificateType == null);
                 }
                 if (instanceCertificate == null &&
                     certType == ObjectTypeIds.ApplicationCertificateType)
                 {
-                    instanceCertificate = m_securityConfiguration.ListOfCertificateIdentifier.FirstOrDefault();
+                    instanceCertificate = m_securityConfiguration.ApplicationCertificates.FirstOrDefault();
                 }
                 if (instanceCertificate != null)
                 {
@@ -1090,7 +1090,7 @@ namespace Opc.Ua
         {
             foreach (var certType in certificateTypes)
             {
-                var instanceCertificate = m_securityConfiguration.ListOfCertificateIdentifier.FirstOrDefault(id => id.CertificateType == certType);
+                var instanceCertificate = m_securityConfiguration.ApplicationCertificates.FirstOrDefault(id => id.CertificateType == certType);
                 if (instanceCertificate != null)
                 {
                     return instanceCertificate.Find(privateKey);
