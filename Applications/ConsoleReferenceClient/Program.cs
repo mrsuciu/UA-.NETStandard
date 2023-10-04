@@ -151,7 +151,7 @@ namespace Quickstarts.ConsoleReferenceClient
                 }
 
                 // check the application certificate.
-                bool haveAppCertificate = await application.CheckApplicationInstanceCertificate(false).ConfigureAwait(false);
+                bool haveAppCertificate = await application.CheckApplicationInstanceCertificates(false).ConfigureAwait(false);
                 if (!haveAppCertificate)
                 {
                     throw new ErrorExitException("Application instance certificate invalid!", ExitCode.ErrorCertificate);
