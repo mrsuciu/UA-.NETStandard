@@ -58,6 +58,6 @@ namespace Opc.Ua.Bindings
         /// <summary>
         /// Called when a channel closes.
         /// </summary>
-        void ChannelClosed(uint channelId);
+        void ChannelClosed(string channelId);
     }
 }

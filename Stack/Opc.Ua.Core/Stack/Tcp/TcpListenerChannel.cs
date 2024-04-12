@@ -312,7 +312,7 @@ namespace Opc.Ua.Bindings
             finally
             {
                 State = TcpChannelState.Closed;
-                m_listener.ChannelClosed(ChannelId);
+                m_listener.ChannelClosed(GlobalChannelId);
 
                 // notify any monitors.
                 NotifyMonitors(new ServiceResult(StatusCodes.BadConnectionClosed), true);

@@ -147,6 +147,7 @@ namespace Opc.Ua.Bindings
 
             m_bufferManager = new BufferManager("Server", m_quotas.MaxBufferSize);
             m_channels = new Dictionary<uint, TcpListenerChannel>();
+            m_handledChannels = new HashSet<string>();
             m_sessionsPerChannel = new ConcurrentDictionary<string, uint>();
             m_reverseConnectListener = settings.ReverseConnectListener;
             m_maxChannelCount = settings.MaxChannelCount;
@@ -238,14 +239,38 @@ namespace Opc.Ua.Bindings
         /// <summary>
         /// Called when a channel closes.
         /// </summary>
-        public void ChannelClosed(uint channelId)
+        public void ChannelClosed(string globalChannelId)
         {
-            lock (m_lock)
+            uint channelId = uint.MaxValue;
+            int lastIdx = globalChannelId.LastIndexOf('-');
+
+            if ((lastIdx != -1) && (lastIdx != globalChannelId.Length - 1))
             {
-                m_channels?.Remove(channelId);
+                string sChannelId = globalChannelId.Substring(lastIdx + 1);
+                uint.TryParse(sChannelId, out channelId);
             }
 
-            Utils.LogInfo("ChannelId {0}: closed", channelId);
+            lock (m_lock)
+            {
+                if (m_channels.ContainsKey(channelId))
+                {
+                    m_channels?.Remove(channelId);
+                    m_handledChannels.Remove(globalChannelId);
+                    m_sessionsPerChannel.TryRemove(globalChannelId, out uint value);
+                }
+            }
+
+            Utils.LogInfo("ChannelId {0}: closed", globalChannelId);
+        }
+
+        /// <summary>
+        /// Checks if the channel is handled by the TransportListener 
+        /// </summary>
+        /// <param name="globalChannelId"></param>
+        /// <returns></returns>
+        public bool ChannelHandled(string globalChannelId)
+        {
+            return m_handledChannels.Contains(globalChannelId);
         }
 
         /// <summary>
@@ -295,6 +320,7 @@ namespace Opc.Ua.Bindings
                 lock (m_lock)
                 {
                     m_channels.Add(channel.Id, channel);
+                    m_handledChannels.Add(channel.GlobalChannelId);
                 }
 
                 if (m_callback != null)
@@ -486,6 +512,7 @@ namespace Opc.Ua.Bindings
                 {
                     // remove it so it does not get cleaned up as an inactive connection.
                     m_channels.Remove(channelId);
+                    m_handledChannels.Remove(channel.GlobalChannelId);
                 }
             }
 
@@ -597,6 +624,8 @@ namespace Opc.Ua.Bindings
 
                             // save the channel for shutdown and reconnects.
                             m_channels.Add(channelId, channel);
+
+                            m_handledChannels.Add(channel.GlobalChannelId);
                         }
                         catch (Exception ex)
                         {
@@ -800,6 +829,7 @@ namespace Opc.Ua.Bindings
         private Socket m_listeningSocket;
         private Socket m_listeningSocketIPv6;
         private Dictionary<uint, TcpListenerChannel> m_channels;
+        private HashSet<string> m_handledChannels;
         private ITransportListenerCallback m_callback;
         private bool m_reverseConnectListener;
         private int m_inactivityDetectPeriod;

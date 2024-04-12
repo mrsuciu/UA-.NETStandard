@@ -3353,22 +3353,28 @@ namespace Opc.Ua.Server
             if (reason == SessionEventReason.Closing)
             {
                 TransportListeners.ForEach(tl => {
-                    if (tl is TcpTransportListener tc)
+                    if (tl is TcpTransportListener tc && tc.ChannelHandled(session.SecureChannelId))
+                    { 
                         tc.HandleSessionClose(session.SecureChannelId);
+                    }
                 });
             }
             else if (reason == SessionEventReason.Created)
             {
                 TransportListeners.ForEach(tl => {
-                    if (tl is TcpTransportListener tc)
+                    if (tl is TcpTransportListener tc && tc.ChannelHandled(session.SecureChannelId))
+                    {
                         tc.HandleSessionCreate(session.SecureChannelId);
+                    }
                 });
             }
             else if (reason == SessionEventReason.Activated)
             {
                 TransportListeners.ForEach(tl => {
-                    if (tl is TcpTransportListener tc)
+                    if (tl is TcpTransportListener tc && tc.ChannelHandled(session.SecureChannelId))
+                    {
                         tc.HandleSessionActivate(session.SecureChannelId);
+                    }
                 });
             }
         }
