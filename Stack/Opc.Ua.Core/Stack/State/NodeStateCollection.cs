@@ -467,6 +467,15 @@ namespace Opc.Ua
     public class NodeStateFactory
     {
         /// <summary>
+        /// The PropertyType browseName
+        /// </summary>
+        private static readonly Opc.Ua.QualifiedName s_propertyTypeQualifiedName = Opc.Ua.QualifiedName.Create(
+            Opc.Ua.BrowseNames.PropertyType,
+            Opc.Ua.Namespaces.OpcUa,
+            new NamespaceTable()
+            );
+
+        /// <summary>
         /// Creates a new instance. 
         /// </summary>
         /// <param name="context">The current context.</param>
@@ -536,6 +545,12 @@ namespace Opc.Ua
 
                 case NodeClass.VariableType:
                 {
+                    if (browseName.Equals(s_propertyTypeQualifiedName))
+                    {
+                        child = new PropertyTypeState();
+                        break;
+                    }
+
                     child = new BaseDataVariableTypeState();
                     break;
                 }

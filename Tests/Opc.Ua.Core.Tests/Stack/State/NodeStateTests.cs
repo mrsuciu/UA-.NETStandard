@@ -87,6 +87,29 @@ namespace Opc.Ua.Core.Tests.Stack.State
             testObject.Create(context, new NodeId(1000), "Name", "DisplayName", true);
             testObject.Dispose();
         }
+
+        /// <summary>
+        /// PropertyType node state instance should be of type PropertyTypeState
+        /// </summary>
+        [Test]
+        public void CreatePropertyTypeNodeState()
+        {
+            var propertyTypeQualifiedName = Opc.Ua.QualifiedName.Create(
+              Opc.Ua.BrowseNames.PropertyType,
+              Opc.Ua.Namespaces.OpcUa,
+              new NamespaceTable()
+              );
+
+            NodeStateFactory factory = new NodeStateFactory();
+            var nodeState = factory.CreateInstance(null,
+                null,
+                NodeClass.VariableType,
+                propertyTypeQualifiedName,
+                null,
+                null);
+
+            Assert.IsInstanceOf(typeof(PropertyTypeState), nodeState);
+        }
         #endregion
 
         #region Private Methods
