@@ -2025,6 +2025,74 @@ namespace Opc.Ua.Client.Tests
         }
 
         /// <summary>
+        /// Open a session on a channel using RSA encrypted UserCertificateIdentityToken
+        /// </summary>
+        [Test]
+        [Combinatorial]
+        [Order(10350)]
+        public async Task OpenSessionRSAUserCertIdentityTokenAsync(
+            [Values(
+                SecurityPolicies.Basic256Sha256,
+                SecurityPolicies.Aes128_Sha256_RsaOaep,
+                SecurityPolicies.Aes256_Sha256_RsaPss
+            )]
+                string securityPolicy)
+        {
+            Endpoints ??= await ClientFixture.GetEndpointsAsync(ServerUrl).ConfigureAwait(false);
+
+            EndpointDescription endpointDescription = Endpoints
+                .Where(endpoint => endpoint.EndpointUrl
+                    .StartsWith(ServerUrl.Scheme, StringComparison.Ordinal))
+                .Where(endpoint => securityPolicy.Equals(
+                    endpoint.SecurityPolicyUri,
+                    StringComparison.Ordinal))
+                .OrderByDescending(endpoint => endpoint.SecurityMode)
+                .FirstOrDefault(endpoint => endpoint.UserIdentityTokens.Any(
+                    token => token.TokenType == UserTokenType.Certificate));
+
+            if (endpointDescription == null)
+            {
+                NUnit.Framework.Assert.Ignore(
+                    $"No endpoint with certificate user token for policy {securityPolicy}");
+            }
+
+            var endpointConfiguration = EndpointConfiguration.Create(ClientFixture.Config);
+            endpointConfiguration.OperationTimeout = ClientFixture.OperationTimeout;
+            var endpoint = new ConfiguredEndpoint(
+                null,
+                endpointDescription,
+                endpointConfiguration);
+
+            using X509Certificate2 cert = CertificateBuilder
+                .Create("CN=Client Test RSA Subject, O=OPC Foundation")
+                .SetRSAKeySize(CertificateFactory.DefaultKeySize)
+                .CreateForRSA();
+
+            var userIdentity = new UserIdentity(cert);
+
+            UserTokenPolicy identityPolicy = endpoint.Description.FindUserTokenPolicy(
+                userIdentity.TokenType,
+                userIdentity.IssuedTokenType,
+                endpoint.Description.SecurityPolicyUri);
+            if (identityPolicy == null)
+            {
+                NUnit.Framework.Assert.Ignore(
+                    $"No UserTokenPolicy found for {userIdentity.TokenType}" +
+                    $" / {userIdentity.IssuedTokenType}");
+            }
+
+            // the active channel
+            ISession session1 = await ClientFixture.ConnectAsync(endpoint, userIdentity)
+                .ConfigureAwait(false);
+            Assert.NotNull(session1);
+
+            ServerStatusDataType value1 =
+                await session1.ReadValueAsync<ServerStatusDataType>(
+                VariableIds.Server_ServerStatus).ConfigureAwait(false);
+            Assert.NotNull(value1);
+        }
+
+        /// <summary>
         /// Happy SetSubscriptionDurable
         /// </summary>
         [Test]
