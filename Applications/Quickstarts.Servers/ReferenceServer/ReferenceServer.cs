@@ -31,9 +31,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Opc.Ua;
+using Opc.Ua.Gds.Server;
 using Opc.Ua.Server;
+using Opc.Ua.Server.UserDatabase;
 
 namespace Quickstarts.ReferenceServer
 {
@@ -53,6 +56,38 @@ namespace Quickstarts.ReferenceServer
     /// </remarks>
     public class ReferenceServer : ReverseConnectServer
     {
+        /// <summary>
+        /// Create reference server
+        /// </summary>
+        public ReferenceServer()
+        {
+            m_userDatabase = new JsonUserDatabase("ReferenceServer_Users.json");
+            m_userDatabase.CreateUser("sysadmin", "demo"u8, [Role.SecurityAdmin, Role.AuthenticatedUser]);
+            m_userDatabase.CreateUser("user1", "password"u8, [Role.AuthenticatedUser]);
+            m_userDatabase.CreateUser("user2", "password1"u8, [Role.AuthenticatedUser]);
+            m_userDatabase.CreateUser(
+                   "SystemAdmin",
+                   Encoding.UTF8.GetBytes("demo"),
+                   [GdsRole.CertificateAuthorityAdmin, GdsRole.DiscoveryAdmin, Role.SecurityAdmin,
+                       Role.ConfigureAdmin, Role.AuthenticatedUser]);
+            m_userDatabase.CreateUser(
+                "AppAdmin",
+                Encoding.UTF8.GetBytes("demo"),
+                [Role.AuthenticatedUser, GdsRole.CertificateAuthorityAdmin,
+                    GdsRole.DiscoveryAdmin, Role.AuthenticatedUser]);
+            m_userDatabase.CreateUser(
+                "DiscoveryAdmin",
+                Encoding.UTF8.GetBytes("demo"),
+                [Role.AuthenticatedUser, GdsRole.DiscoveryAdmin, Role.AuthenticatedUser]);
+            m_userDatabase.CreateUser(
+                "CertificateAuthorityAdmin",
+                Encoding.UTF8.GetBytes("demo"),
+                [Role.AuthenticatedUser, GdsRole.CertificateAuthorityAdmin, Role.AuthenticatedUser]);
+        }
+
+        /// <summary>
+        /// Token validator
+        /// </summary>
         public ITokenValidator TokenValidator { get; set; }
 
         /// <summary>
@@ -387,34 +422,34 @@ namespace Quickstarts.ReferenceServer
                     "Security token is not a valid username token. An empty password is not accepted.");
             }
 
-            // User with permission to configure server
-            if (userName == "sysadmin" && Utils.IsEqual(password, "demo"u8))
+            if (m_userDatabase.CheckCredentials(userName, password))
             {
-                return new SystemConfigurationIdentity(
-                    new UserIdentity(userNameToken));
+                var userIdentity = new UserIdentity(userNameToken);
+                try
+                {
+                    ICollection<Role> roles = m_userDatabase.GetUserRoles(userName);
+                    return new RoleBasedIdentity(userIdentity, roles);
+                }
+                catch
+                {
+                    userIdentity.Dispose();
+                    throw;
+                }
             }
 
-            // standard users for CTT verification
-            if (!((userName == "user1" && Utils.IsEqual(password, "password"u8)) ||
-                (userName == "user2" && Utils.IsEqual(password, "password1"u8))))
-            {
-                // construct translation object with default text.
-                var info = new TranslationInfo(
-                    "InvalidPassword",
-                    "en-US",
-                    "Invalid username or password.",
-                    userName);
+            // construct translation object with default text.
+            var info = new TranslationInfo(
+                "InvalidPassword",
+                "en-US",
+                "Invalid username or password.",
+                userName);
 
-                // create an exception with a vendor defined sub-code.
-                throw new ServiceResultException(
-                    new ServiceResult(
-                        LoadServerProperties().ProductUri,
-                        new StatusCode(StatusCodes.BadUserAccessDenied, "InvalidPassword"),
-                        new LocalizedText(info)));
-            }
-            return new RoleBasedIdentity(
-                new UserIdentity(userNameToken),
-                [Role.AuthenticatedUser]);
+            // create an exception with a vendor defined sub-code.
+            throw new ServiceResultException(
+                new ServiceResult(
+                    LoadServerProperties().ProductUri,
+                    new StatusCode(StatusCodes.BadUserAccessDenied, "InvalidPassword"),
+                    new LocalizedText(info)));
         }
 
         /// <summary>
@@ -521,5 +556,6 @@ namespace Quickstarts.ReferenceServer
         }
 
         private ICertificateValidator m_userCertificateValidator;
+        private readonly JsonUserDatabase m_userDatabase;
     }
 }
