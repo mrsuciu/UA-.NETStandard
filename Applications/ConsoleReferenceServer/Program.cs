@@ -115,6 +115,11 @@ namespace Quickstarts.ReferenceServer
                 // parse command line and set options
                 ConsoleUtils.ProcessCommandLine(args, options, ref showHelp, "REFSERVER");
 
+                if (cttMode && !Utils.IsRunningOnMono())
+                {
+                    configSectionName = "Ctt.ReferenceServer";
+                }
+
                 // log console output to logger
                 if (logConsole && appLog)
                 {
