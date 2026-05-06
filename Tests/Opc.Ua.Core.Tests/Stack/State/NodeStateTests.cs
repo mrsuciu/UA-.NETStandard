@@ -111,6 +111,12 @@ namespace Opc.Ua.Core.Tests.Stack.State
                     continue;
                 }
 
+                if (testObject is not BaseInstanceState)
+                {
+                    testObject.Dispose();
+                    continue;
+                }
+
                 try
                 {
                     testObject.Create(context, new NodeId(nodeId++), "Name", "DisplayName", true);
@@ -132,6 +138,32 @@ namespace Opc.Ua.Core.Tests.Stack.State
                 Is.Empty,
                 "Instantiated placeholder children were found:" + Environment.NewLine +
                 string.Join(Environment.NewLine, placeholders));
+        }
+
+        /// <summary>
+        /// Verify placeholder declarations remain available on type definitions.
+        /// </summary>
+        [Test]
+        public void TypeDefinitions_ShouldKeepPlaceholderChildren()
+        {
+            ITelemetryContext telemetry = NUnitTelemetryContext.Create();
+            var context = new SystemContext(telemetry) { NamespaceUris = Context.NamespaceUris };
+            var typeDefinition = new BaseObjectTypeState();
+            var placeholder = new BaseObjectState(typeDefinition)
+            {
+                BrowseName = new QualifiedName("<OptionalChild>", 0),
+                DisplayName = "<OptionalChild>",
+                ModellingRuleId = ObjectIds.ModellingRule_OptionalPlaceholder
+            };
+
+            typeDefinition.AddChild(placeholder);
+
+            typeDefinition.Create(context, new NodeId(1000), "TypeName", "TypeName", true);
+
+            var children = new List<BaseInstanceState>();
+            typeDefinition.GetChildren(context, children);
+
+            Assert.That(children, Has.Member(placeholder));
         }
 
         /// <summary>
