@@ -34,13 +34,17 @@ namespace Opc.Ua.Server.Tests
             m_serverMock.Setup(s => s.ServerUris).Returns(new StringTable());
             m_serverMock.Setup(s => s.TypeTree).Returns(new TypeTable(namespaceUris));
             m_serverMock.Setup(s => s.Factory).Returns(new Mock<IEncodeableFactory>().Object);
+
+            // ServerSystemContext requires invoked server mock to have properties setup.
+            m_serverMock.Setup(s => s.DefaultSystemContext).Returns(new ServerSystemContext(m_serverMock.Object));
+
             m_diagnosticsNodeManager = new DiagnosticsNodeManager(
                 m_serverMock.Object,
                 new ApplicationConfiguration { ServerConfiguration = new ServerConfiguration() });
+            m_diagnosticsNodeManager.SetDiagnosticsEnabled(
+                m_serverMock.Object.DefaultSystemContext,
+                false);
             m_serverMock.Setup(s => s.DiagnosticsNodeManager).Returns(m_diagnosticsNodeManager);
-
-            // ServerSystemContext requires invoked server mock to have properties setup
-            m_serverMock.Setup(s => s.DefaultSystemContext).Returns(new ServerSystemContext(m_serverMock.Object));
 
             m_sessionMock.Setup(s => s.Id).Returns(new NodeId(Guid.NewGuid()));
         }
