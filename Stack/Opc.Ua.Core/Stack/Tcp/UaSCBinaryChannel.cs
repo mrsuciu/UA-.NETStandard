@@ -225,7 +225,10 @@ namespace Opc.Ua.Bindings
         {
             if (disposing)
             {
+                Socket?.Close();
                 DiscardTokens();
+                Utils.SilentDispose(Socket);
+
                 m_localNonce?.Dispose();
                 m_localNonce = null;
 

@@ -79,6 +79,7 @@ namespace Opc.Ua
                 {
                     for (int ii = 0; ii < TransportListeners.Count; ii++)
                     {
+                        TransportListeners[ii].ConnectionStatusChanged -= OnConnectionStatusChanged;
                         Utils.SilentDispose(TransportListeners[ii]);
                     }
 
@@ -554,7 +555,7 @@ namespace Opc.Ua
                 ServerError = new ServiceResult(e);
             }
 
-            // close any listeners.
+            // close and dispose any listeners.
             List<ITransportListener> listeners = TransportListeners;
 
             if (listeners != null)
@@ -572,6 +573,8 @@ namespace Opc.Ua
                             "Unexpected error closing a listener {Name}.",
                             listeners[ii].GetType().FullName);
                     }
+
+                    Utils.SilentDispose(listeners[ii]);
                 }
 
                 listeners.Clear();
