@@ -27,6 +27,7 @@
  * http://opcfoundation.org/License/MIT/1.00/
  * ======================================================================*/
 
+using System.Net;
 using Opc.Ua.Security.Certificates;
 
 namespace Opc.Ua
@@ -99,6 +100,19 @@ namespace Opc.Ua
         /// 0 indicates no limit.
         /// </summary>
         public int MaxChannelCount { get; set; }
+
+        /// <summary>
+        /// Maximum number of accepted reverse-connect sockets that may wait before sending
+        /// ReverseHello. These sockets are not yet associated with a known server; each is just an
+        /// anonymous incoming socket.
+        /// 0 indicates no limit.
+        /// </summary>
+        public uint MaxReverseConnectAnonymousConnections { get; set; }
+
+        /// <summary>
+        /// Optional IP address the listener should bind to.
+        /// </summary>
+        public IPAddress ListenAddress { get; set; }
 
         /// <summary>
         /// Indicates if Http listener requires mutual TLS

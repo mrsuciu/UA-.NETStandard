@@ -116,7 +116,8 @@ namespace Opc.Ua.Client.Tests
         /// <exception cref="InvalidOperationException"></exception>
         public async Task LoadClientConfigurationAsync(
             string pkiRoot = null,
-            string clientName = "TestClient")
+            string clientName = "TestClient",
+            ReverseConnectManagerOptions reverseConnectOptions = null)
         {
             var application = new ApplicationInstance(m_telemetry) { ApplicationName = clientName };
 
@@ -161,13 +162,15 @@ namespace Opc.Ua.Client.Tests
                 throw new InvalidOperationException("Application instance certificate invalid!");
             }
 
-            ReverseConnectManager = new ReverseConnectManager(m_telemetry);
+            ReverseConnectManager = reverseConnectOptions == null
+                ? new ReverseConnectManager(m_telemetry)
+                : new ReverseConnectManager(m_telemetry, reverseConnectOptions);
         }
 
         /// <summary>
         /// Start a host for reverse connections on random port.
         /// </summary>
-        public async Task StartReverseConnectHostAsync()
+        public async Task StartReverseConnectHostAsync(string host = "localhost")
         {
             int testPort = ServerFixtureUtils.GetNextFreeIPPort();
             bool retryStartServer = false;
@@ -176,7 +179,7 @@ namespace Opc.Ua.Client.Tests
             {
                 try
                 {
-                    var reverseConnectUri = new Uri("opc.tcp://localhost:" + testPort);
+                    var reverseConnectUri = new Uri("opc.tcp://" + host + ":" + testPort);
                     ReverseConnectManager.AddEndpoint(reverseConnectUri);
                     ReverseConnectManager.StartService(Config);
                     ReverseConnectUri = reverseConnectUri.ToString();

@@ -188,6 +188,131 @@ namespace Opc.Ua.Client
         }
 
         /// <summary>
+        /// Stores accepted reverse connections until a caller asks for a matching connection.
+        /// </summary>
+        private class ReverseConnectConnectionQueue
+        {
+            /// <summary>
+            /// Creates a queue using the configured reverse connect capacity limits.
+            /// </summary>
+            /// <param name="options">The options that control global and per-endpoint queue capacity.</param>
+            public ReverseConnectConnectionQueue(ReverseConnectManagerOptions options)
+            {
+                m_maxPendingConnections = options.MaxPendingConnections;
+                m_maxWaitingConnectionsPerEndpoint = options.MaxWaitingConnectionsPerEndpoint;
+            }
+
+            /// <summary>
+            /// Whether unmatched reverse connections should be queued for later use.
+            /// </summary>
+            public bool Enabled => m_maxWaitingConnectionsPerEndpoint > 0;
+
+            /// <summary>
+            /// Tries to add a reverse connection to the queue without exceeding configured limits.
+            /// </summary>
+            /// <param name="connection">The reverse connection reported by the transport listener.</param>
+            /// <returns><c>true</c> if the connection was queued and accepted; otherwise <c>false</c>.</returns>
+            public bool TryEnqueue(ConnectionWaitingEventArgs connection)
+            {
+                if (!Enabled)
+                {
+                    return false;
+                }
+
+                lock (m_lock)
+                {
+                    if (m_maxPendingConnections > 0 &&
+                        m_waitingConnections.Count >= m_maxPendingConnections)
+                    {
+                        return false;
+                    }
+
+                    int endpointCount = m_waitingConnections.Count(
+                        waiting => SameEndpoint(waiting.EndpointUrl, connection.EndpointUrl));
+                    if (endpointCount >= m_maxWaitingConnectionsPerEndpoint)
+                    {
+                        return false;
+                    }
+
+                    m_waitingConnections.Add(connection);
+                    connection.Accepted = true;
+                    return true;
+                }
+            }
+
+            /// <summary>
+            /// Tries to remove the first queued reverse connection that matches the requested server.
+            /// </summary>
+            /// <param name="endpointUrl">The server endpoint URL requested by the caller.</param>
+            /// <param name="serverUri">The optional server application URI requested by the caller.</param>
+            /// <param name="connection">The matching queued connection, if one is available.</param>
+            /// <returns><c>true</c> if a queued connection was found; otherwise <c>false</c>.</returns>
+            public bool TryDequeue(
+                Uri endpointUrl,
+                string? serverUri,
+                out ITransportWaitingConnection connection)
+            {
+                lock (m_lock)
+                {
+                    for (int ii = 0; ii < m_waitingConnections.Count; ii++)
+                    {
+                        ConnectionWaitingEventArgs waiting = m_waitingConnections[ii];
+                        if (Matches(endpointUrl, serverUri, waiting))
+                        {
+                            m_waitingConnections.RemoveAt(ii);
+                            connection = waiting;
+                            return true;
+                        }
+                    }
+                }
+
+                connection = null!;
+                return false;
+            }
+
+            /// <summary>
+            /// Removes and closes all queued reverse connections.
+            /// </summary>
+            public void Clear()
+            {
+                ConnectionWaitingEventArgs[] waitingConnections;
+                lock (m_lock)
+                {
+                    waitingConnections = [.. m_waitingConnections];
+                    m_waitingConnections.Clear();
+                }
+
+                foreach (ConnectionWaitingEventArgs waiting in waitingConnections)
+                {
+                    Utils.SilentDispose(waiting.Handle as IDisposable);
+                }
+            }
+
+            private static bool Matches(
+                Uri endpointUrl,
+                string? serverUri,
+                ConnectionWaitingEventArgs waiting)
+            {
+                return endpointUrl.Scheme.Equals(waiting.EndpointUrl.Scheme, StringComparison.Ordinal) &&
+                    (serverUri?.Equals(waiting.ServerUri, StringComparison.Ordinal) == true ||
+                        endpointUrl.Authority.Equals(
+                            waiting.EndpointUrl.Authority,
+                            StringComparison.OrdinalIgnoreCase));
+            }
+
+            private static bool SameEndpoint(Uri left, Uri right)
+            {
+                return left.Scheme.Equals(right.Scheme, StringComparison.Ordinal) &&
+                    left.Authority.Equals(right.Authority, StringComparison.OrdinalIgnoreCase);
+            }
+
+            private readonly Lock m_lock = new();
+            private readonly List<ConnectionWaitingEventArgs> m_waitingConnections = [];
+            private readonly uint m_maxPendingConnections;
+            private readonly uint m_maxWaitingConnectionsPerEndpoint;
+        }
+
+        /// <summary>
         /// Obsolete default constructor
         /// </summary>
         [Obsolete("Use ReverseConnectManager(ITelemetryContext) instead.")]
@@ -200,9 +325,26 @@ namespace Opc.Ua.Client
         /// Initializes the object with default values.
         /// </summary>
         public ReverseConnectManager(ITelemetryContext telemetry)
+            : this(telemetry, null)
+        {
+        }
+
+        /// <summary>
+        /// Initializes the manager with optional limits for queued and anonymous reverse connections.
+        /// </summary>
+        /// <param name="telemetry">The telemetry context used for logging and diagnostics.</param>
+        /// <param name="options">
+        /// The optional reverse connect listener settings. If omitted, the manager keeps the
+        /// default behavior and does not queue unmatched reverse connections.
+        /// </param>
+        public ReverseConnectManager(
+            ITelemetryContext telemetry,
+            ReverseConnectManagerOptions? options)
         {
             m_telemetry = telemetry;
             m_logger = telemetry.CreateLogger<ReverseConnectManager>();
+            m_options = options ?? new ReverseConnectManagerOptions();
+            m_connectionQueue = new ReverseConnectConnectionQueue(m_options);
             m_state = ReverseConnectManagerState.New;
             m_registrations = [];
             m_endpointUrls = [];
@@ -234,6 +376,7 @@ namespace Opc.Ua.Client
             {
                 Utils.SilentDispose(m_cts);
             }
+            m_connectionQueue.Clear();
             DisposeHosts();
         }
 
@@ -506,6 +649,7 @@ namespace Opc.Ua.Client
                 m_registrations.Clear();
                 CancelAndRenewTokenSource();
             }
+            m_connectionQueue.Clear();
         }
 
         /// <summary>
@@ -529,12 +673,31 @@ namespace Opc.Ua.Client
             string? serverUri,
             CancellationToken ct = default)
         {
+            if (endpointUrl == null)
+            {
+                throw new ArgumentNullException(nameof(endpointUrl));
+            }
+
             var tcs = new TaskCompletionSource<ITransportWaitingConnection>();
-            int hashCode = RegisterWaitingConnection(
-                endpointUrl,
+            Registration registration = new Registration(
                 serverUri,
-                (sender, e) => tcs.TrySetResult(e),
-                ReverseConnectStrategy.Once);
+                endpointUrl,
+                (sender, e) => tcs.TrySetResult(e))
+            {
+                ReverseConnectStrategy = ReverseConnectStrategy.Once
+            };
+            int hashCode = registration.GetHashCode();
+
+            lock (m_registrationsLock)
+            {
+                m_registrations.Add(registration);
+                if (m_connectionQueue.TryDequeue(endpointUrl, serverUri, out ITransportWaitingConnection connection))
+                {
+                    m_registrations.Remove(registration);
+                    return connection;
+                }
+                CancelAndRenewTokenSource();
+            }
 
             async Task ListenForCancelAsync(CancellationToken ct)
             {
@@ -683,7 +846,9 @@ namespace Opc.Ua.Client
                 reverseConnectHost.CreateListener(
                     endpointUrl,
                     new ConnectionWaitingHandlerAsync(OnConnectionWaitingAsync),
-                    new EventHandler<ConnectionStatusEventArgs>(OnConnectionStatusChanged));
+                    new EventHandler<ConnectionStatusEventArgs>(OnConnectionStatusChanged),
+                    m_options.MaxAnonymousConnections,
+                    m_options.ListenAddress);
             }
             catch (ArgumentException ae)
             {
@@ -702,6 +867,14 @@ namespace Opc.Ua.Client
             int endTime = startTime + (m_configuration?.HoldTime ?? 15000);
 
             bool matched = MatchRegistration(sender, e);
+            if (!matched && m_connectionQueue.TryEnqueue(e))
+            {
+                matched = true;
+                m_logger.LogInformation(
+                    "Queued reverse connection: {ServerUri} {EndpointUrl}",
+                    e.ServerUri,
+                    e.EndpointUrl);
+            }
             while (!matched)
             {
                 m_logger.LogInformation("Holding reverse connection: {ServerUri} {EndpointUrl}", e.ServerUri, e.EndpointUrl);
@@ -719,6 +892,10 @@ namespace Opc.Ua.Client
                             if (tsk.IsCanceled)
                             {
                                 matched = MatchRegistration(sender, e);
+                                if (!matched)
+                                {
+                                    matched = m_connectionQueue.TryEnqueue(e);
+                                }
                                 if (matched)
                                 {
                                     m_logger.LogInformation(
@@ -843,6 +1020,8 @@ namespace Opc.Ua.Client
         private Type? m_configType;
         private ReverseConnectClientConfiguration? m_configuration;
         private Dictionary<Uri, ReverseConnectInfo> m_endpointUrls;
+        private readonly ReverseConnectManagerOptions m_options;
+        private readonly ReverseConnectConnectionQueue m_connectionQueue;
         private ReverseConnectManagerState m_state;
         private readonly List<Registration> m_registrations;
         private readonly Lock m_registrationsLock = new();

@@ -383,6 +383,11 @@ namespace Opc.Ua.Bindings
             m_bufferManager = new BufferManager("Server", m_quotas.MaxBufferSize, m_telemetry);
             m_channels = new ConcurrentDictionary<uint, TcpListenerChannel>();
             m_reverseConnectListener = settings.ReverseConnectListener;
+            m_maxReverseConnectAnonymousConnections = settings.MaxReverseConnectAnonymousConnections;
+            m_reverseConnectListenAddress = settings.ListenAddress;
+            m_reverseConnectAnonymousChannelIds = m_reverseConnectListener
+                ? new ConcurrentDictionary<uint, byte>()
+                : null;
             MaxChannelCount = settings.MaxChannelCount;
 
             // save the callback to the server.
@@ -463,6 +468,7 @@ namespace Opc.Ua.Bindings
         /// </summary>
         public void ChannelClosed(uint channelId)
         {
+            m_reverseConnectAnonymousChannelIds?.TryRemove(channelId, out _);
             if (m_channels?.TryRemove(channelId, out TcpListenerChannel channel) == true)
             {
                 Utils.SilentDispose(channel);
@@ -592,9 +598,7 @@ namespace Opc.Ua.Bindings
                 UriHostNameType hostType = Uri.CheckHostName(EndpointUrl.Host);
                 bool bindToSpecifiedAddress =
                     hostType is not UriHostNameType.Dns and not UriHostNameType.Unknown and not UriHostNameType.Basic;
-                IPAddress ipAddress = bindToSpecifiedAddress
-                    ? IPAddress.Parse(EndpointUrl.Host)
-                    : IPAddress.Any;
+                IPAddress ipAddress = ResolveListenAddress(hostType, bindToSpecifiedAddress);
 
                 // create IPv4 or IPv6 socket.
                 Exception exception = null;
@@ -732,6 +736,7 @@ namespace Opc.Ua.Bindings
                     StatusCodes.BadTcpSecureChannelUnknown,
                     "Could not find secure channel request.");
             }
+            m_reverseConnectAnonymousChannelIds?.TryRemove(channelId, out _);
 
             // notify the application.
             if (ConnectionWaiting != null)
@@ -928,20 +933,38 @@ namespace Opc.Ua.Bindings
                                             OnReportAuditCertificateEvent));
                                 }
 
-                                uint channelId;
-                                do
+                                if (m_reverseConnectListener &&
+                                    m_maxReverseConnectAnonymousConnections > 0 &&
+                                    m_reverseConnectAnonymousChannelIds?.Count >=
+                                        m_maxReverseConnectAnonymousConnections)
                                 {
-                                    // get channel id
-                                    channelId = GetNextChannelId();
+                                    m_logger.LogWarning(
+                                        "OnAccept: Maximum number of anonymous reverse connections {MaxAnonymousConnections} reached.",
+                                        m_maxReverseConnectAnonymousConnections);
+                                    Utils.SilentDispose(e.AcceptSocket);
+                                }
+                                else
+                                {
+                                    uint channelId;
+                                    do
+                                    {
+                                        // get channel id
+                                        channelId = GetNextChannelId();
 
-                                    // save the channel for shutdown and reconnects.
-                                    // retry to get a channel id if it is already in use.
-                                } while (!channels.TryAdd(channelId, channel));
+                                        // save the channel for shutdown and reconnects.
+                                        // retry to get a channel id if it is already in use.
+                                    } while (!channels.TryAdd(channelId, channel));
 
-                                // start accepting messages on the channel.
-                                channel.Attach(channelId, e.AcceptSocket);
+                                    if (m_reverseConnectListener)
+                                    {
+                                        m_reverseConnectAnonymousChannelIds?.TryAdd(channelId, 0);
+                                    }
 
-                                channel = null;
+                                    // start accepting messages on the channel.
+                                    channel.Attach(channelId, e.AcceptSocket);
+
+                                    channel = null;
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -1141,6 +1164,41 @@ namespace Opc.Ua.Bindings
             return (uint)Utils.IncrementIdentifier(ref m_lastChannelId);
         }
 
+        /// <summary>
+        /// Resolve the IP address to bind the listener to.
+        /// </summary>
+        private IPAddress ResolveListenAddress(
+            UriHostNameType hostType,
+            bool bindToSpecifiedAddress)
+        {
+            if (m_reverseConnectListenAddress == null)
+            {
+                return bindToSpecifiedAddress ? IPAddress.Parse(EndpointUrl.Host) : IPAddress.Any;
+            }
+
+            if (bindToSpecifiedAddress)
+            {
+                IPAddress endpointAddress = IPAddress.Parse(EndpointUrl.Host);
+                if (!endpointAddress.Equals(m_reverseConnectListenAddress))
+                {
+                    throw ServiceResultException.Create(
+                        StatusCodes.BadInvalidArgument,
+                        "The listener address {0} does not match endpoint host {1}.",
+                        m_reverseConnectListenAddress,
+                        EndpointUrl.Host);
+                }
+            }
+            else if (hostType is UriHostNameType.Unknown or UriHostNameType.Basic)
+            {
+                throw ServiceResultException.Create(
+                    StatusCodes.BadInvalidArgument,
+                    "The endpoint host {0} is not valid for listener binding.",
+                    EndpointUrl.Host);
+            }
+
+            return m_reverseConnectListenAddress;
+        }
+
         private readonly Lock m_lock = new();
         private readonly ITelemetryContext m_telemetry;
         private readonly ILogger m_logger;
@@ -1154,6 +1212,9 @@ namespace Opc.Ua.Bindings
         private ConcurrentDictionary<uint, TcpListenerChannel> m_channels;
         private ITransportListenerCallback m_callback;
         private bool m_reverseConnectListener;
+        private uint m_maxReverseConnectAnonymousConnections;
+        private IPAddress m_reverseConnectListenAddress;
+        private ConcurrentDictionary<uint, byte> m_reverseConnectAnonymousChannelIds;
         private int m_inactivityDetectPeriod;
         private Timer m_inactivityDetectionTimer;
         private ActiveClientTracker m_activeClientTracker;

@@ -28,6 +28,7 @@
  * ======================================================================*/
 
 using System;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Opc.Ua.Bindings;
 
@@ -49,14 +50,40 @@ namespace Opc.Ua
         }
 
         /// <summary>
-        /// Creates a new reverse listener host for a client.
+        /// Creates a new reverse listener host for a client with default listener behavior.
         /// </summary>
+        /// <param name="url">The reverse connect endpoint URL where the client listens.</param>
+        /// <param name="onConnectionWaiting">The callback raised when a ReverseHello connection is ready.</param>
+        /// <param name="onConnectionStatusChanged">The callback raised when a reverse connection changes state.</param>
         /// <exception cref="ArgumentNullException"><paramref name="url"/> is <c>null</c>.</exception>
         /// <exception cref="ServiceResultException"></exception>
         public void CreateListener(
             Uri url,
             ConnectionWaitingHandlerAsync onConnectionWaiting,
             EventHandler<ConnectionStatusEventArgs> onConnectionStatusChanged)
+        {
+            CreateListener(url, onConnectionWaiting, onConnectionStatusChanged, 0, null);
+        }
+
+        /// <summary>
+        /// Creates a new reverse listener host for a client with listener-specific limits.
+        /// </summary>
+        /// <param name="url">The reverse connect endpoint URL where the client listens.</param>
+        /// <param name="onConnectionWaiting">The callback raised when a ReverseHello connection is ready.</param>
+        /// <param name="onConnectionStatusChanged">The callback raised when a reverse connection changes state.</param>
+        /// <param name="maxAnonymousConnections">
+        /// The maximum number of accepted sockets that may wait for ReverseHello at the same time.
+        /// A value of 0 disables this limit.
+        /// </param>
+        /// <param name="listenAddress">The optional IP address to bind the listener to.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="url"/> is <c>null</c>.</exception>
+        /// <exception cref="ServiceResultException"></exception>
+        public void CreateListener(
+            Uri url,
+            ConnectionWaitingHandlerAsync onConnectionWaiting,
+            EventHandler<ConnectionStatusEventArgs> onConnectionStatusChanged,
+            uint maxAnonymousConnections,
+            IPAddress listenAddress)
         {
             if (url == null)
             {
@@ -76,6 +103,8 @@ namespace Opc.Ua
             Url = url;
             m_onConnectionWaiting = onConnectionWaiting;
             m_onConnectionStatusChanged = onConnectionStatusChanged;
+            m_maxAnonymousConnections = maxAnonymousConnections;
+            m_listenAddress = listenAddress;
         }
 
         /// <summary>
@@ -99,7 +128,9 @@ namespace Opc.Ua
                     NamespaceUris = null,
                     Factory = null,
                     ReverseConnectListener = true,
-                    MaxChannelCount = 0
+                    MaxChannelCount = 0,
+                    MaxReverseConnectAnonymousConnections = m_maxAnonymousConnections,
+                    ListenAddress = m_listenAddress
                 };
 
                 m_logger.LogInformation("Open reverse connect listener for {Url}.", Url);
@@ -131,5 +162,7 @@ namespace Opc.Ua
         private EventHandler<ConnectionStatusEventArgs> m_onConnectionStatusChanged;
         private readonly ITelemetryContext m_telemetry;
         private readonly ILogger m_logger;
+        private uint m_maxAnonymousConnections;
+        private IPAddress m_listenAddress;
     }
 }

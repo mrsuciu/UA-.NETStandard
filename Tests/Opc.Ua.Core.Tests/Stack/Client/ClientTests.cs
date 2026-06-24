@@ -28,6 +28,9 @@
  * ======================================================================*/
 
 using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using Opc.Ua.Tests;
 using Assert = NUnit.Framework.Legacy.ClassicAssert;
@@ -87,6 +90,36 @@ namespace Opc.Ua.Core.Tests.Stack.Client
             };
 
             Assert.AreEqual(uri.OriginalString, uriBuilder.Uri.OriginalString);
+        }
+
+        [Test]
+        public void ReverseConnectHostRejectsMismatchedListenAddress()
+        {
+            int port = GetFreeTcpPort();
+            var host = new ReverseConnectHost(NUnitTelemetryContext.Create());
+
+            // A listener pinned to a specific IP address must not silently bind to
+            // an endpoint URL that names a different address.
+            host.CreateListener(
+                new Uri($"opc.tcp://127.0.0.2:{port}"),
+                (sender, args) => Task.CompletedTask,
+                (sender, args) => { },
+                0,
+                IPAddress.Loopback);
+
+            ServiceResultException exception = Assert.Throws<ServiceResultException>(
+                () => host.Open());
+            Assert.AreEqual(StatusCodes.BadInvalidArgument, exception.StatusCode);
+        }
+
+        private static int GetFreeTcpPort()
+        {
+            using var socket = new Socket(
+                AddressFamily.InterNetwork,
+                SocketType.Stream,
+                ProtocolType.Tcp);
+            socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            return ((IPEndPoint)socket.LocalEndPoint).Port;
         }
 
         [Test]

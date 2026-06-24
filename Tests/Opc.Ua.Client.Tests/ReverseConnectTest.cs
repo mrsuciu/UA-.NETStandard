@@ -28,12 +28,16 @@
  * ======================================================================*/
 
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using Opc.Ua.Server;
 using Opc.Ua.Server.Tests;
 using Opc.Ua.Tests;
 using Quickstarts.ReferenceServer;
@@ -197,6 +201,133 @@ namespace Opc.Ua.Client.Tests
             Assert.NotNull(selectedEndpoint);
         }
 
+        [Test]
+        [Order(250)]
+        public async Task QueuedReverseConnectionAsync()
+        {
+            var options = new ReverseConnectManagerOptions
+            {
+                MaxAnonymousConnections = 2,
+                MaxPendingConnections = 1,
+                MaxWaitingConnectionsPerEndpoint = 1,
+                ListenAddress = IPAddress.Loopback
+            };
+            using var queuedClientFixture = new ClientFixture(telemetry: Telemetry);
+            await queuedClientFixture
+                .LoadClientConfigurationAsync(PkiRoot, "QueuedReverseConnectClient", options)
+                .ConfigureAwait(false);
+            await queuedClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(queuedClientFixture.ReverseConnectUri);
+            ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 1);
+            try
+            {
+                await Task.Delay(MaxTimeout / 2).ConfigureAwait(false);
+
+                using var cancellationTokenSource = new CancellationTokenSource(MaxTimeout);
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                ITransportWaitingConnection connection = await queuedClientFixture
+                    .ReverseConnectManager
+                    .WaitForConnectionAsync(
+                        m_endpointUrl,
+                        null,
+                        cancellationTokenSource.Token)
+                    .ConfigureAwait(false);
+
+                Assert.NotNull(connection, "Failed to get queued connection.");
+                Assert.Less(
+                    stopwatch.ElapsedMilliseconds,
+                    1000,
+                    "Queued connection should be returned without waiting for another ReverseHello.");
+                Utils.SilentDispose(connection.Handle as IDisposable);
+            }
+            finally
+            {
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+            }
+        }
+
+        [Test]
+        [Order(251)]
+        public async Task MaxAnonymousConnectionsRejectsExcessSocketAsync()
+        {
+            var options = new ReverseConnectManagerOptions
+            {
+                MaxAnonymousConnections = 1,
+                MaxPendingConnections = 1,
+                MaxWaitingConnectionsPerEndpoint = 1,
+                ListenAddress = IPAddress.Loopback
+            };
+            using var limitedClientFixture = new ClientFixture(telemetry: Telemetry);
+            await limitedClientFixture
+                .LoadClientConfigurationAsync(PkiRoot, "AnonymousLimitReverseConnectClient", options)
+                .ConfigureAwait(false);
+            await limitedClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(limitedClientFixture.ReverseConnectUri);
+            using var firstClient = new TcpClient(AddressFamily.InterNetwork);
+            using var secondClient = new TcpClient(AddressFamily.InterNetwork);
+            await firstClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+            await secondClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(
+                await WaitForSocketClosedAsync(secondClient.Client, 3000).ConfigureAwait(false),
+                "The second anonymous reverse connection should be closed when the limit is reached.");
+        }
+
+        [Test]
+        [Order(252)]
+        public async Task MaxPendingConnectionsRejectsExcessQueuedReverseHelloAsync()
+        {
+            var options = new ReverseConnectManagerOptions
+            {
+                MaxAnonymousConnections = 2,
+                MaxPendingConnections = 1,
+                MaxWaitingConnectionsPerEndpoint = 2,
+                ListenAddress = IPAddress.Loopback
+            };
+            using var pendingLimitClientFixture = new ClientFixture(telemetry: Telemetry);
+            await pendingLimitClientFixture
+                .LoadClientConfigurationAsync(PkiRoot, "PendingLimitReverseConnectClient", options)
+                .ConfigureAwait(false);
+            pendingLimitClientFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    HoldTime = 100,
+                    WaitTimeout = 1000
+                };
+            await pendingLimitClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(pendingLimitClientFixture.ReverseConnectUri);
+            ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 2);
+            try
+            {
+                Assert.IsTrue(
+                    await WaitForRejectedReverseConnectionAsync(reverseConnectUri).ConfigureAwait(false),
+                    "A second unmatched ReverseHello should be rejected when MaxPendingConnections is full.");
+
+                using var cancellationTokenSource = new CancellationTokenSource(MaxTimeout);
+                ITransportWaitingConnection connection = await pendingLimitClientFixture
+                    .ReverseConnectManager
+                    .WaitForConnectionAsync(
+                        m_endpointUrl,
+                        null,
+                        cancellationTokenSource.Token)
+                    .ConfigureAwait(false);
+
+                Assert.NotNull(connection, "The first queued connection should remain available.");
+                Utils.SilentDispose(connection.Handle as IDisposable);
+            }
+            finally
+            {
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+            }
+        }
+
         [Theory]
         [Order(300)]
         public async Task ReverseConnectAsync(string securityPolicy, TelemetryParameterizable<ISessionFactory> sessionFactory)
@@ -348,6 +479,39 @@ namespace Opc.Ua.Client.Tests
             {
                 m_requiredLock.Release();
             }
+        }
+
+        private static async Task<bool> WaitForSocketClosedAsync(Socket socket, int timeout)
+        {
+            int startTime = HiResClock.TickCount;
+            while (HiResClock.TickCount - startTime < timeout)
+            {
+                if (socket.Poll(100_000, SelectMode.SelectRead) && socket.Available == 0)
+                {
+                    return true;
+                }
+                await Task.Delay(50).ConfigureAwait(false);
+            }
+
+            return false;
+        }
+
+        private async Task<bool> WaitForRejectedReverseConnectionAsync(Uri reverseConnectUri)
+        {
+            int startTime = HiResClock.TickCount;
+            while (HiResClock.TickCount - startTime < MaxTimeout)
+            {
+                if (ReferenceServer.GetReverseConnections().TryGetValue(
+                        reverseConnectUri,
+                        out ReverseConnectProperty reverseConnection) &&
+                    reverseConnection.LastState == ReverseConnectState.Rejected)
+                {
+                    return true;
+                }
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+
+            return false;
         }
 
         private readonly SemaphoreSlim m_requiredLock = new(1);
