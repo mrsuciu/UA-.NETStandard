@@ -205,17 +205,18 @@ namespace Opc.Ua.Client.Tests
         [Order(250)]
         public async Task QueuedReverseConnectionAsync()
         {
-            var options = new ReverseConnectManagerOptions
-            {
-                MaxAnonymousConnections = 2,
-                MaxPendingConnections = 1,
-                MaxWaitingConnectionsPerEndpoint = 1,
-                ListenAddress = IPAddress.Loopback
-            };
             using var queuedClientFixture = new ClientFixture(telemetry: Telemetry);
             await queuedClientFixture
-                .LoadClientConfigurationAsync(PkiRoot, "QueuedReverseConnectClient", options)
+                .LoadClientConfigurationAsync(PkiRoot, "QueuedReverseConnectClient")
                 .ConfigureAwait(false);
+            queuedClientFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    MaxAnonymousConnections = 2,
+                    MaxPendingConnections = 1,
+                    MaxWaitingConnectionsPerEndpoint = 1,
+                    ListenAddress = IPAddress.Loopback.ToString()
+                };
             await queuedClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
 
             var reverseConnectUri = new Uri(queuedClientFixture.ReverseConnectUri);
@@ -251,17 +252,18 @@ namespace Opc.Ua.Client.Tests
         [Order(251)]
         public async Task MaxAnonymousConnectionsRejectsExcessSocketAsync()
         {
-            var options = new ReverseConnectManagerOptions
-            {
-                MaxAnonymousConnections = 1,
-                MaxPendingConnections = 1,
-                MaxWaitingConnectionsPerEndpoint = 1,
-                ListenAddress = IPAddress.Loopback
-            };
             using var limitedClientFixture = new ClientFixture(telemetry: Telemetry);
             await limitedClientFixture
-                .LoadClientConfigurationAsync(PkiRoot, "AnonymousLimitReverseConnectClient", options)
+                .LoadClientConfigurationAsync(PkiRoot, "AnonymousLimitReverseConnectClient")
                 .ConfigureAwait(false);
+            limitedClientFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    MaxAnonymousConnections = 1,
+                    MaxPendingConnections = 1,
+                    MaxWaitingConnectionsPerEndpoint = 1,
+                    ListenAddress = IPAddress.Loopback.ToString()
+                };
             await limitedClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
 
             var reverseConnectUri = new Uri(limitedClientFixture.ReverseConnectUri);
@@ -283,22 +285,19 @@ namespace Opc.Ua.Client.Tests
         [Order(252)]
         public async Task MaxPendingConnectionsRejectsExcessQueuedReverseHelloAsync()
         {
-            var options = new ReverseConnectManagerOptions
-            {
-                MaxAnonymousConnections = 2,
-                MaxPendingConnections = 1,
-                MaxWaitingConnectionsPerEndpoint = 2,
-                ListenAddress = IPAddress.Loopback
-            };
             using var pendingLimitClientFixture = new ClientFixture(telemetry: Telemetry);
             await pendingLimitClientFixture
-                .LoadClientConfigurationAsync(PkiRoot, "PendingLimitReverseConnectClient", options)
+                .LoadClientConfigurationAsync(PkiRoot, "PendingLimitReverseConnectClient")
                 .ConfigureAwait(false);
             pendingLimitClientFixture.Config.ClientConfiguration.ReverseConnect =
                 new ReverseConnectClientConfiguration
                 {
                     HoldTime = 100,
-                    WaitTimeout = 1000
+                    WaitTimeout = 1000,
+                    MaxAnonymousConnections = 2,
+                    MaxPendingConnections = 1,
+                    MaxWaitingConnectionsPerEndpoint = 2,
+                    ListenAddress = IPAddress.Loopback.ToString()
                 };
             await pendingLimitClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
 

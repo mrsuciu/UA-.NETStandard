@@ -31,6 +31,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -198,8 +199,20 @@ namespace Opc.Ua.Client
             /// <param name="options">The options that control global and per-endpoint queue capacity.</param>
             public ReverseConnectConnectionQueue(ReverseConnectManagerOptions options)
             {
-                m_maxPendingConnections = options.MaxPendingConnections;
-                m_maxWaitingConnectionsPerEndpoint = options.MaxWaitingConnectionsPerEndpoint;
+                UpdateOptions(options);
+            }
+
+            /// <summary>
+            /// Updates the queue capacity limits.
+            /// </summary>
+            /// <param name="options">The options that control global and per-endpoint queue capacity.</param>
+            public void UpdateOptions(ReverseConnectManagerOptions options)
+            {
+                lock (m_lock)
+                {
+                    m_maxPendingConnections = options.MaxPendingConnections;
+                    m_maxWaitingConnectionsPerEndpoint = options.MaxWaitingConnectionsPerEndpoint;
+                }
             }
 
             /// <summary>
@@ -308,8 +321,8 @@ namespace Opc.Ua.Client
 
             private readonly Lock m_lock = new();
             private readonly List<ConnectionWaitingEventArgs> m_waitingConnections = [];
-            private readonly uint m_maxPendingConnections;
-            private readonly uint m_maxWaitingConnectionsPerEndpoint;
+            private uint m_maxPendingConnections;
+            private uint m_maxWaitingConnectionsPerEndpoint;
         }
 
         /// <summary>
@@ -344,6 +357,7 @@ namespace Opc.Ua.Client
             m_telemetry = telemetry;
             m_logger = telemetry.CreateLogger<ReverseConnectManager>();
             m_options = options ?? new ReverseConnectManagerOptions();
+            m_hasExplicitOptions = options != null;
             m_connectionQueue = new ReverseConnectConnectionQueue(m_options);
             m_state = ReverseConnectManagerState.New;
             m_registrations = [];
@@ -434,6 +448,15 @@ namespace Opc.Ua.Client
 
             lock (m_lock)
             {
+                var manualEndpoints = new List<Uri>();
+                foreach (KeyValuePair<Uri, ReverseConnectInfo> endpoint in m_endpointUrls)
+                {
+                    if (!endpoint.Value.ConfigEntry)
+                    {
+                        manualEndpoints.Add(endpoint.Key);
+                    }
+                }
+
                 if (m_configuration != null)
                 {
                     StopService();
@@ -442,9 +465,14 @@ namespace Opc.Ua.Client
                 }
 
                 m_configuration = configuration ?? new ReverseConnectClientConfiguration();
+                ApplyConfigurationOptions(m_configuration);
 
-                // clear configured endpoints
-                ClearEndpoints(true);
+                DisposeHosts();
+
+                foreach (Uri endpoint in manualEndpoints)
+                {
+                    AddEndpointInternal(endpoint, false);
+                }
 
                 if (configuration?.ClientEndpoints != null)
                 {
@@ -586,6 +614,11 @@ namespace Opc.Ua.Client
                         m_configurationWatcher.Changed += OnConfigurationChangedAsync;
                     }
                 }
+                catch (ServiceResultException)
+                {
+                    m_state = ReverseConnectManagerState.Errored;
+                    throw;
+                }
                 catch (Exception e)
                 {
                     m_logger.LogError(e, "Unexpected error starting reverse connect manager.");
@@ -625,6 +658,11 @@ namespace Opc.Ua.Client
                     OnUpdateConfiguration(configuration);
                     OpenHosts();
                     m_state = ReverseConnectManagerState.Started;
+                }
+                catch (ServiceResultException)
+                {
+                    m_state = ReverseConnectManagerState.Errored;
+                    throw;
                 }
                 catch (Exception e)
                 {
@@ -831,6 +869,39 @@ namespace Opc.Ua.Client
             m_endpointUrls = newEndpointUrls;
         }
 
+        private void ApplyConfigurationOptions(ReverseConnectClientConfiguration configuration)
+        {
+            if (m_hasExplicitOptions)
+            {
+                return;
+            }
+
+            m_options.MaxAnonymousConnections = configuration.MaxAnonymousConnections;
+            m_options.MaxPendingConnections = configuration.MaxPendingConnections;
+            m_options.MaxWaitingConnectionsPerEndpoint =
+                configuration.MaxWaitingConnectionsPerEndpoint;
+            m_options.ListenAddress = ParseListenAddress(configuration.ListenAddress);
+            m_connectionQueue.UpdateOptions(m_options);
+        }
+
+        private static IPAddress? ParseListenAddress(string? listenAddress)
+        {
+            if (string.IsNullOrWhiteSpace(listenAddress))
+            {
+                return null;
+            }
+
+            if (IPAddress.TryParse(listenAddress, out IPAddress? address))
+            {
+                return address;
+            }
+
+            throw ServiceResultException.Create(
+                StatusCodes.BadInvalidArgument,
+                "The configured reverse connect listen address {0} is not a valid IP address.",
+                listenAddress);
+        }
+
         /// <summary>
         /// Add endpoint for reverse connection.
         /// </summary>
@@ -1020,6 +1091,7 @@ namespace Opc.Ua.Client
         private Type? m_configType;
         private ReverseConnectClientConfiguration? m_configuration;
         private Dictionary<Uri, ReverseConnectInfo> m_endpointUrls;
+        private readonly bool m_hasExplicitOptions;
         private readonly ReverseConnectManagerOptions m_options;
         private readonly ReverseConnectConnectionQueue m_connectionQueue;
         private ReverseConnectManagerState m_state;

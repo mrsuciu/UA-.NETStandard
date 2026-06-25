@@ -2077,6 +2077,51 @@ namespace Opc.Ua
         /// </summary>
         [DataMember(Order = 30, IsRequired = false)]
         public int WaitTimeout { get; set; } = 20000;
+
+        /// <summary>
+        /// Maximum number of anonymous incoming reverse-connect sockets that may wait for
+        /// ReverseHello at the listener.
+        /// </summary>
+        /// <remarks>
+        /// At this stage the TCP socket has been accepted, but the server has not yet identified
+        /// itself with a ReverseHello message. 0 indicates no limit.
+        /// </remarks>
+        [DataMember(Order = 40, IsRequired = false, EmitDefaultValue = false)]
+        public uint MaxAnonymousConnections { get; set; }
+
+        /// <summary>
+        /// Maximum number of reverse connections that may wait in the reverse-connect manager
+        /// queue.
+        /// </summary>
+        /// <remarks>
+        /// These connections have identified themselves with ReverseHello and were accepted by the
+        /// client, but have not yet been consumed by WaitForConnectionAsync to create or reconnect
+        /// a session. 0 indicates no limit.
+        /// </remarks>
+        [DataMember(Order = 50, IsRequired = false, EmitDefaultValue = false)]
+        public uint MaxPendingConnections { get; set; }
+
+        /// <summary>
+        /// Maximum number of queued reverse connections that may wait for one server endpoint.
+        /// </summary>
+        /// <remarks>
+        /// This limit applies within MaxPendingConnections. It prevents one endpoint from filling
+        /// the manager queue with identified and accepted reverse connections while they wait for
+        /// WaitForConnectionAsync. 0 preserves the existing no-queue behavior for each endpoint.
+        /// </remarks>
+        [DataMember(Order = 60, IsRequired = false, EmitDefaultValue = false)]
+        public uint MaxWaitingConnectionsPerEndpoint { get; set; }
+
+        /// <summary>
+        /// Optional IP address used to bind the reverse-connect listener.
+        /// </summary>
+        /// <remarks>
+        /// When set, the listener binds to this local address instead of the endpoint host. The
+        /// value must be a valid IP address string.
+        /// </remarks>
+        [DataMember(Order = 70, IsRequired = false, EmitDefaultValue = false)]
+        public string ListenAddress { get; set; }
+
     }
 
     /// <summary>
