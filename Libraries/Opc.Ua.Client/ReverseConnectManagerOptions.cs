@@ -39,12 +39,19 @@ namespace Opc.Ua.Client
     /// first, an accepted TCP socket waits anonymously for ReverseHello; next, after ReverseHello
     /// identifies the server and the client accepts the connection, it waits in the manager queue;
     /// finally, WaitForConnectionAsync consumes the queued connection to create or reconnect a
-    /// session. MaxAnonymousConnections limits the first stage, MaxPendingConnections limits the
+    /// session. MaxClientChannels limits the total number of reverse-connect sockets across these
+    /// stages, MaxAnonymousConnections limits the first stage, MaxPendingConnections limits the
     /// whole manager queue, and MaxWaitingConnectionsPerEndpoint limits the part of that queue that
     /// may be used by one server endpoint.
     /// </remarks>
     public class ReverseConnectManagerOptions
     {
+        /// <summary>
+        /// Maximum number of reverse-connect sockets/channels that may exist through one reverse
+        /// listener. 0 indicates no limit.
+        /// </summary>
+        public uint MaxClientChannels { get; set; }
+
         /// <summary>
         /// Maximum number of accepted reverse-connect sockets waiting before ReverseHello.
         /// 0 indicates no limit.

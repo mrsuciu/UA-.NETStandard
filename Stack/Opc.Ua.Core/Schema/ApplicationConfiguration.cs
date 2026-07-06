@@ -2122,6 +2122,18 @@ namespace Opc.Ua
         [DataMember(Order = 70, IsRequired = false, EmitDefaultValue = false)]
         public string ListenAddress { get; set; }
 
+        /// <summary>
+        /// Maximum number of reverse-connect sockets/channels that may exist through one reverse
+        /// listener.
+        /// </summary>
+        /// <remarks>
+        /// This limit is shared by all reverse-connecting servers using the listener. It counts
+        /// anonymous sockets, identified queued connections, and connections already consumed by
+        /// WaitForConnectionAsync. 0 indicates no limit.
+        /// </remarks>
+        [DataMember(Order = 80, IsRequired = false, EmitDefaultValue = false)]
+        public uint MaxClientChannels { get; set; }
+
     }
 
     /// <summary>

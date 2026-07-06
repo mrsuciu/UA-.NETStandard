@@ -876,6 +876,7 @@ namespace Opc.Ua.Client
                 return;
             }
 
+            m_options.MaxClientChannels = configuration.MaxClientChannels;
             m_options.MaxAnonymousConnections = configuration.MaxAnonymousConnections;
             m_options.MaxPendingConnections = configuration.MaxPendingConnections;
             m_options.MaxWaitingConnectionsPerEndpoint =
@@ -918,6 +919,7 @@ namespace Opc.Ua.Client
                     endpointUrl,
                     new ConnectionWaitingHandlerAsync(OnConnectionWaitingAsync),
                     new EventHandler<ConnectionStatusEventArgs>(OnConnectionStatusChanged),
+                    m_options.MaxClientChannels,
                     m_options.MaxAnonymousConnections,
                     m_options.ListenAddress);
             }

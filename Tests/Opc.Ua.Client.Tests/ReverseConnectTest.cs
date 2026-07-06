@@ -283,6 +283,281 @@ namespace Opc.Ua.Client.Tests
 
         [Test]
         [Order(252)]
+        public async Task MaxClientChannelsRejectsExcessAnonymousSocketAsync()
+        {
+            using var limitedClientFixture = new ClientFixture(telemetry: Telemetry);
+            await limitedClientFixture
+                .LoadClientConfigurationAsync(PkiRoot, "ClientChannelLimitReverseConnectClient")
+                .ConfigureAwait(false);
+            limitedClientFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    MaxClientChannels = 1,
+                    ListenAddress = IPAddress.Loopback.ToString()
+                };
+            await limitedClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(limitedClientFixture.ReverseConnectUri);
+            using var firstClient = new TcpClient(AddressFamily.InterNetwork);
+            using var secondClient = new TcpClient(AddressFamily.InterNetwork);
+            await firstClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+            await secondClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(
+                await WaitForSocketClosedAsync(secondClient.Client, 3000).ConfigureAwait(false),
+                "The second reverse connection should be closed when MaxClientChannels is reached.");
+        }
+
+        [Test]
+        [Order(253)]
+        public async Task MaxClientChannelsAllowsConfiguredCapacityBeforeRejectingAsync()
+        {
+            using var limitedClientFixture = new ClientFixture(telemetry: Telemetry);
+            await limitedClientFixture
+                .LoadClientConfigurationAsync(PkiRoot, "ClientChannelCapacityReverseConnectClient")
+                .ConfigureAwait(false);
+            limitedClientFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    MaxClientChannels = 2,
+                    ListenAddress = IPAddress.Loopback.ToString()
+                };
+            await limitedClientFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(limitedClientFixture.ReverseConnectUri);
+            using var firstClient = new TcpClient(AddressFamily.InterNetwork);
+            using var secondClient = new TcpClient(AddressFamily.InterNetwork);
+            using var thirdClient = new TcpClient(AddressFamily.InterNetwork);
+            await firstClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+            await secondClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+            await thirdClient
+                .ConnectAsync(IPAddress.Loopback, reverseConnectUri.Port)
+                .ConfigureAwait(false);
+
+            Assert.IsFalse(
+                await WaitForSocketClosedAsync(firstClient.Client, 500).ConfigureAwait(false),
+                "The first reverse connection should remain open within MaxClientChannels capacity.");
+            Assert.IsFalse(
+                await WaitForSocketClosedAsync(secondClient.Client, 500).ConfigureAwait(false),
+                "The second reverse connection should remain open within MaxClientChannels capacity.");
+            Assert.IsTrue(
+                await WaitForSocketClosedAsync(thirdClient.Client, 3000).ConfigureAwait(false),
+                "The third reverse connection should be closed after MaxClientChannels capacity is reached.");
+        }
+
+        [Test]
+        [Order(254)]
+        public async Task MaxClientChannelsRejectsExcessQueuedReverseHelloAsync()
+        {
+            using var clientChannelLimitFixture = new ClientFixture(telemetry: Telemetry);
+            await clientChannelLimitFixture
+                .LoadClientConfigurationAsync(PkiRoot, "ClientChannelQueuedLimitReverseConnectClient")
+                .ConfigureAwait(false);
+            clientChannelLimitFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    HoldTime = 100,
+                    WaitTimeout = 1000,
+                    MaxClientChannels = 1,
+                    MaxPendingConnections = 2,
+                    MaxWaitingConnectionsPerEndpoint = 2,
+                    ListenAddress = IPAddress.Loopback.ToString()
+                };
+            await clientChannelLimitFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(clientChannelLimitFixture.ReverseConnectUri);
+            ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 2);
+            try
+            {
+                using var cancellationTokenSource = new CancellationTokenSource(MaxTimeout);
+                ITransportWaitingConnection connection = await clientChannelLimitFixture
+                    .ReverseConnectManager
+                    .WaitForConnectionAsync(
+                        m_endpointUrl,
+                        null,
+                        cancellationTokenSource.Token)
+                    .ConfigureAwait(false);
+
+                Assert.NotNull(connection, "The first queued connection should remain available.");
+                using (var secondCancellationTokenSource = new CancellationTokenSource(500))
+                {
+                    ServiceResultException exception = Assert.ThrowsAsync<ServiceResultException>(
+                        async () => await clientChannelLimitFixture
+                            .ReverseConnectManager
+                            .WaitForConnectionAsync(
+                                m_endpointUrl,
+                                null,
+                                secondCancellationTokenSource.Token)
+                            .ConfigureAwait(false));
+                    Assert.AreEqual(StatusCodes.BadTimeout, exception.StatusCode);
+                }
+                Utils.SilentDispose(connection.Handle as IDisposable);
+            }
+            finally
+            {
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+            }
+        }
+
+        [Test]
+        [Order(255)]
+        public async Task MaxClientChannelsReleasesAfterQueuedConnectionDisposedAsync()
+        {
+            using var clientChannelReleaseFixture = new ClientFixture(telemetry: Telemetry);
+            await clientChannelReleaseFixture
+                .LoadClientConfigurationAsync(PkiRoot, "ClientChannelReleaseReverseConnectClient")
+                .ConfigureAwait(false);
+            clientChannelReleaseFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    HoldTime = 100,
+                    WaitTimeout = 1000,
+                    MaxClientChannels = 1,
+                    MaxPendingConnections = 1,
+                    MaxWaitingConnectionsPerEndpoint = 1,
+                    ListenAddress = IPAddress.Loopback.ToString()
+                };
+            await clientChannelReleaseFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            var reverseConnectUri = new Uri(clientChannelReleaseFixture.ReverseConnectUri);
+            try
+            {
+                ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 1);
+                using (var cancellationTokenSource = new CancellationTokenSource(MaxTimeout))
+                {
+                    ITransportWaitingConnection connection = await clientChannelReleaseFixture
+                        .ReverseConnectManager
+                        .WaitForConnectionAsync(
+                            m_endpointUrl,
+                            null,
+                            cancellationTokenSource.Token)
+                        .ConfigureAwait(false);
+
+                    Assert.NotNull(connection, "The first queued connection should be available.");
+                    Utils.SilentDispose(connection.Handle as IDisposable);
+                }
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+
+                ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 1);
+                using (var cancellationTokenSource = new CancellationTokenSource(MaxTimeout))
+                {
+                    ITransportWaitingConnection connection = await clientChannelReleaseFixture
+                        .ReverseConnectManager
+                        .WaitForConnectionAsync(
+                            m_endpointUrl,
+                            null,
+                            cancellationTokenSource.Token)
+                        .ConfigureAwait(false);
+
+                    Assert.NotNull(
+                        connection,
+                        "A new reverse connection should be accepted after the first handle is disposed.");
+                    Utils.SilentDispose(connection.Handle as IDisposable);
+                }
+            }
+            finally
+            {
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+            }
+        }
+
+        [Test]
+        [Order(256)]
+        public async Task MaxClientChannelsReleasesAfterSessionCloseAsync()
+        {
+            using var clientChannelSessionFixture = new ClientFixture(telemetry: Telemetry);
+            await clientChannelSessionFixture
+                .LoadClientConfigurationAsync(PkiRoot, "ClientChannelSessionReverseConnectClient")
+                .ConfigureAwait(false);
+            clientChannelSessionFixture.Config.ClientConfiguration.ReverseConnect =
+                new ReverseConnectClientConfiguration
+                {
+                    MaxClientChannels = 1,
+                    ListenAddress = IPAddress.Loopback.ToString()
+            };
+            await clientChannelSessionFixture.StartReverseConnectHostAsync("127.0.0.1").ConfigureAwait(false);
+
+            ApplicationConfiguration config = clientChannelSessionFixture.Config;
+            EndpointDescriptionCollection endpoints = await clientChannelSessionFixture
+                .GetEndpointsAsync(m_endpointUrl)
+                .ConfigureAwait(false);
+            var endpointConfiguration = EndpointConfiguration.Create(config);
+            EndpointDescription selectedEndpoint = ClientFixture.SelectEndpoint(
+                config,
+                endpoints,
+                m_endpointUrl,
+                SecurityPolicies.None);
+            Assert.NotNull(selectedEndpoint);
+            var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
+            Assert.NotNull(endpoint);
+
+            var sessionFactory = new DefaultSessionFactory(Telemetry);
+            var reverseConnectUri = new Uri(clientChannelSessionFixture.ReverseConnectUri);
+            ISession session = null;
+            ISession secondSession = null;
+            try
+            {
+                ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 1);
+                session = await sessionFactory
+                    .CreateAsync(
+                        config,
+                        clientChannelSessionFixture.ReverseConnectManager,
+                        endpoint,
+                        false,
+                        false,
+                        "Reverse Connect MaxClientChannels Session",
+                        MaxTimeout,
+                        new UserIdentity(),
+                        null)
+                    .ConfigureAwait(false);
+                Assert.NotNull(session);
+
+                await session.CloseAsync().ConfigureAwait(false);
+                session.Dispose();
+                session = null;
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+
+                ReferenceServer.AddReverseConnection(reverseConnectUri, MaxTimeout, maxSessionCount: 1);
+                secondSession = await sessionFactory
+                    .CreateAsync(
+                        config,
+                        clientChannelSessionFixture.ReverseConnectManager,
+                        endpoint,
+                        false,
+                        false,
+                        "Reverse Connect MaxClientChannels Session 2",
+                        MaxTimeout,
+                        new UserIdentity(),
+                        null)
+                    .ConfigureAwait(false);
+                Assert.NotNull(secondSession);
+            }
+            finally
+            {
+                if (secondSession != null)
+                {
+                    await secondSession.CloseAsync().ConfigureAwait(false);
+                    secondSession.Dispose();
+                }
+                if (session != null)
+                {
+                    await session.CloseAsync().ConfigureAwait(false);
+                    session.Dispose();
+                }
+                ReferenceServer.RemoveReverseConnection(reverseConnectUri);
+            }
+        }
+
+        [Test]
+        [Order(257)]
         public async Task MaxPendingConnectionsRejectsExcessQueuedReverseHelloAsync()
         {
             using var pendingLimitClientFixture = new ClientFixture(telemetry: Telemetry);

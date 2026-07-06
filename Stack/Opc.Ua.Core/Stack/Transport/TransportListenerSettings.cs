@@ -102,6 +102,12 @@ namespace Opc.Ua
         public int MaxChannelCount { get; set; }
 
         /// <summary>
+        /// Maximum number of reverse-connect sockets/channels that may exist through one reverse
+        /// listener. 0 indicates no limit.
+        /// </summary>
+        public uint MaxReverseConnectClientChannels { get; set; }
+
+        /// <summary>
         /// Maximum number of accepted reverse-connect sockets that may wait before sending
         /// ReverseHello. These sockets are not yet associated with a known server; each is just an
         /// anonymous incoming socket.

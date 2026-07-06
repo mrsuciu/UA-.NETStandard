@@ -62,7 +62,7 @@ namespace Opc.Ua
             ConnectionWaitingHandlerAsync onConnectionWaiting,
             EventHandler<ConnectionStatusEventArgs> onConnectionStatusChanged)
         {
-            CreateListener(url, onConnectionWaiting, onConnectionStatusChanged, 0, null);
+            CreateListener(url, onConnectionWaiting, onConnectionStatusChanged, 0, 0, null);
         }
 
         /// <summary>
@@ -85,6 +85,40 @@ namespace Opc.Ua
             uint maxAnonymousConnections,
             IPAddress listenAddress)
         {
+            CreateListener(
+                url,
+                onConnectionWaiting,
+                onConnectionStatusChanged,
+                0,
+                maxAnonymousConnections,
+                listenAddress);
+        }
+
+        /// <summary>
+        /// Creates a new reverse listener host for a client with listener-specific limits.
+        /// </summary>
+        /// <param name="url">The reverse connect endpoint URL where the client listens.</param>
+        /// <param name="onConnectionWaiting">The callback raised when a ReverseHello connection is ready.</param>
+        /// <param name="onConnectionStatusChanged">The callback raised when a reverse connection changes state.</param>
+        /// <param name="maxClientChannels">
+        /// The maximum number of reverse-connect sockets/channels that may exist through this
+        /// listener at the same time. A value of 0 disables this limit.
+        /// </param>
+        /// <param name="maxAnonymousConnections">
+        /// The maximum number of accepted sockets that may wait for ReverseHello at the same time.
+        /// A value of 0 disables this limit.
+        /// </param>
+        /// <param name="listenAddress">The optional IP address to bind the listener to.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="url"/> is <c>null</c>.</exception>
+        /// <exception cref="ServiceResultException"></exception>
+        public void CreateListener(
+            Uri url,
+            ConnectionWaitingHandlerAsync onConnectionWaiting,
+            EventHandler<ConnectionStatusEventArgs> onConnectionStatusChanged,
+            uint maxClientChannels,
+            uint maxAnonymousConnections,
+            IPAddress listenAddress)
+        {
             if (url == null)
             {
                 throw new ArgumentNullException(nameof(url));
@@ -103,6 +137,7 @@ namespace Opc.Ua
             Url = url;
             m_onConnectionWaiting = onConnectionWaiting;
             m_onConnectionStatusChanged = onConnectionStatusChanged;
+            m_maxClientChannels = maxClientChannels;
             m_maxAnonymousConnections = maxAnonymousConnections;
             m_listenAddress = listenAddress;
         }
@@ -129,6 +164,7 @@ namespace Opc.Ua
                     Factory = null,
                     ReverseConnectListener = true,
                     MaxChannelCount = 0,
+                    MaxReverseConnectClientChannels = m_maxClientChannels,
                     MaxReverseConnectAnonymousConnections = m_maxAnonymousConnections,
                     ListenAddress = m_listenAddress
                 };
@@ -162,6 +198,7 @@ namespace Opc.Ua
         private EventHandler<ConnectionStatusEventArgs> m_onConnectionStatusChanged;
         private readonly ITelemetryContext m_telemetry;
         private readonly ILogger m_logger;
+        private uint m_maxClientChannels;
         private uint m_maxAnonymousConnections;
         private IPAddress m_listenAddress;
     }

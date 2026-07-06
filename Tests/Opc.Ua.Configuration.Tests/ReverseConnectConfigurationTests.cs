@@ -46,6 +46,7 @@ namespace Opc.Ua.Configuration.Tests
             Assert.That(reverseConnect.MaxAnonymousConnections, Is.EqualTo(0));
             Assert.That(reverseConnect.MaxPendingConnections, Is.EqualTo(0));
             Assert.That(reverseConnect.MaxWaitingConnectionsPerEndpoint, Is.EqualTo(0));
+            Assert.That(reverseConnect.MaxClientChannels, Is.EqualTo(0));
             Assert.That(reverseConnect.ListenAddress, Is.Null);
         }
 
@@ -64,7 +65,8 @@ namespace Opc.Ua.Configuration.Tests
                         MaxAnonymousConnections = 1,
                         MaxPendingConnections = 2,
                         MaxWaitingConnectionsPerEndpoint = 3,
-                        ListenAddress = "127.0.0.1"
+                        ListenAddress = "127.0.0.1",
+                        MaxClientChannels = 4
                     }
                 }
             };
@@ -82,6 +84,7 @@ namespace Opc.Ua.Configuration.Tests
             Assert.That(reverseConnect.MaxPendingConnections, Is.EqualTo(2));
             Assert.That(reverseConnect.MaxWaitingConnectionsPerEndpoint, Is.EqualTo(3));
             Assert.That(reverseConnect.ListenAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(reverseConnect.MaxClientChannels, Is.EqualTo(4));
         }
 
         [Test]
@@ -104,7 +107,8 @@ namespace Opc.Ua.Configuration.Tests
                         MaxAnonymousConnections = 1,
                         MaxPendingConnections = 2,
                         MaxWaitingConnectionsPerEndpoint = 3,
-                        ListenAddress = "127.0.0.1"
+                        ListenAddress = "127.0.0.1",
+                        MaxClientChannels = 4
                     });
 
             ReverseConnectClientConfiguration reverseConnect =
@@ -114,6 +118,7 @@ namespace Opc.Ua.Configuration.Tests
             Assert.That(reverseConnect.MaxPendingConnections, Is.EqualTo(2));
             Assert.That(reverseConnect.MaxWaitingConnectionsPerEndpoint, Is.EqualTo(3));
             Assert.That(reverseConnect.ListenAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(reverseConnect.MaxClientChannels, Is.EqualTo(4));
         }
     }
 }

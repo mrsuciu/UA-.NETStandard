@@ -383,8 +383,13 @@ namespace Opc.Ua.Bindings
             m_bufferManager = new BufferManager("Server", m_quotas.MaxBufferSize, m_telemetry);
             m_channels = new ConcurrentDictionary<uint, TcpListenerChannel>();
             m_reverseConnectListener = settings.ReverseConnectListener;
+            m_maxReverseConnectClientChannels = settings.MaxReverseConnectClientChannels;
+            m_reverseConnectClientChannelCount = 0;
             m_maxReverseConnectAnonymousConnections = settings.MaxReverseConnectAnonymousConnections;
             m_reverseConnectListenAddress = settings.ListenAddress;
+            m_reverseConnectClientChannelLeases = m_reverseConnectListener
+                ? new ConcurrentDictionary<uint, ReverseConnectClientChannelLease>()
+                : null;
             m_reverseConnectAnonymousChannelIds = m_reverseConnectListener
                 ? new ConcurrentDictionary<uint, byte>()
                 : null;
@@ -469,6 +474,7 @@ namespace Opc.Ua.Bindings
         public void ChannelClosed(uint channelId)
         {
             m_reverseConnectAnonymousChannelIds?.TryRemove(channelId, out _);
+            ReleaseReverseConnectClientChannel(channelId);
             if (m_channels?.TryRemove(channelId, out TcpListenerChannel channel) == true)
             {
                 Utils.SilentDispose(channel);
@@ -741,10 +747,16 @@ namespace Opc.Ua.Bindings
             // notify the application.
             if (ConnectionWaiting != null)
             {
+                IMessageSocket socket = channel.Socket;
+                if (m_reverseConnectClientChannelLeases?.ContainsKey(channelId) == true)
+                {
+                    socket = new ReverseConnectClientChannelSocket(socket, this, channelId);
+                }
+
                 var args = new TcpConnectionWaitingEventArgs(
                     serverUri,
                     endpointUrl,
-                    channel.Socket);
+                    socket);
                 await ConnectionWaiting(this, args).ConfigureAwait(false);
                 accepted = args.Accepted;
             }
@@ -945,25 +957,55 @@ namespace Opc.Ua.Bindings
                                 }
                                 else
                                 {
-                                    uint channelId;
-                                    do
+                                    ReverseConnectClientChannelLease reverseConnectClientChannelLease =
+                                        null;
+                                    bool clientChannelAccepted = TryAcquireReverseConnectClientChannel(
+                                        out reverseConnectClientChannelLease);
+                                    if (!clientChannelAccepted)
                                     {
-                                        // get channel id
-                                        channelId = GetNextChannelId();
-
-                                        // save the channel for shutdown and reconnects.
-                                        // retry to get a channel id if it is already in use.
-                                    } while (!channels.TryAdd(channelId, channel));
-
-                                    if (m_reverseConnectListener)
-                                    {
-                                        m_reverseConnectAnonymousChannelIds?.TryAdd(channelId, 0);
+                                        m_logger.LogWarning(
+                                            "OnAccept: Maximum number of reverse connect client channels {MaxClientChannels} reached.",
+                                            m_maxReverseConnectClientChannels);
+                                        Utils.SilentDispose(e.AcceptSocket);
                                     }
+                                    else
+                                    {
+                                        uint channelId;
+                                        bool channelLeaseTransferred = false;
+                                        do
+                                        {
+                                            // get channel id
+                                            channelId = GetNextChannelId();
 
-                                    // start accepting messages on the channel.
-                                    channel.Attach(channelId, e.AcceptSocket);
+                                            // save the channel for shutdown and reconnects.
+                                            // retry to get a channel id if it is already in use.
+                                        } while (!channels.TryAdd(channelId, channel));
 
-                                    channel = null;
+                                        if (m_reverseConnectListener)
+                                        {
+                                            m_reverseConnectAnonymousChannelIds?.TryAdd(channelId, 0);
+                                            if (reverseConnectClientChannelLease != null)
+                                            {
+                                                channelLeaseTransferred =
+                                                    m_reverseConnectClientChannelLeases?.TryAdd(
+                                                    channelId,
+                                                    reverseConnectClientChannelLease) == true;
+                                                if (channelLeaseTransferred)
+                                                {
+                                                    reverseConnectClientChannelLease = null;
+                                                }
+                                            }
+                                        }
+
+                                        // start accepting messages on the channel.
+                                        channel.Attach(channelId, e.AcceptSocket);
+
+                                        channel = null;
+                                        if (!channelLeaseTransferred)
+                                        {
+                                            reverseConnectClientChannelLease?.Dispose();
+                                        }
+                                    }
                                 }
                             }
                             catch (Exception ex)
@@ -1199,6 +1241,173 @@ namespace Opc.Ua.Bindings
             return m_reverseConnectListenAddress;
         }
 
+        /// <summary>
+        /// Tries to reserve one reverse-connect client channel slot for a newly accepted socket.
+        /// </summary>
+        /// <remarks>
+        /// A configured value of 0 means unlimited, so no lease is needed. When a limit is active,
+        /// the returned lease keeps the slot reserved until the reverse socket is closed or the
+        /// listener channel is released.
+        /// </remarks>
+        private bool TryAcquireReverseConnectClientChannel(
+            out ReverseConnectClientChannelLease lease)
+        {
+            lease = null;
+            if (!m_reverseConnectListener || m_maxReverseConnectClientChannels == 0)
+            {
+                return true;
+            }
+
+            lock (m_reverseConnectClientChannelLock)
+            {
+                if (m_reverseConnectClientChannelCount >= m_maxReverseConnectClientChannels)
+                {
+                    return false;
+                }
+
+                m_reverseConnectClientChannelCount++;
+            }
+
+            lease = new ReverseConnectClientChannelLease(this);
+            return true;
+        }
+
+        /// <summary>
+        /// Releases the reverse-connect client channel slot tracked for a listener channel id.
+        /// </summary>
+        private void ReleaseReverseConnectClientChannel(uint channelId)
+        {
+            if (m_reverseConnectClientChannelLeases?.TryRemove(
+                    channelId,
+                    out ReverseConnectClientChannelLease lease) == true)
+            {
+                lease.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Releases one reserved reverse-connect client channel slot.
+        /// </summary>
+        private void ReleaseReverseConnectClientChannel()
+        {
+            lock (m_reverseConnectClientChannelLock)
+            {
+                if (m_reverseConnectClientChannelCount > 0)
+                {
+                    m_reverseConnectClientChannelCount--;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Holds one reverse-connect client channel slot while the listener still owns the channel.
+        /// </summary>
+        private sealed class ReverseConnectClientChannelLease : IDisposable
+        {
+            public ReverseConnectClientChannelLease(TcpTransportListener listener)
+            {
+                m_listener = listener;
+            }
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref m_disposed, 1) == 0)
+                {
+                    m_listener.ReleaseReverseConnectClientChannel();
+                }
+            }
+
+            private readonly TcpTransportListener m_listener;
+            private int m_disposed;
+        }
+
+        /// <summary>
+        /// Delegates an accepted reverse socket and releases its client channel slot on close or
+        /// dispose after the socket has been handed off to the client channel.
+        /// </summary>
+        private sealed class ReverseConnectClientChannelSocket : IMessageSocket
+        {
+            public ReverseConnectClientChannelSocket(
+                IMessageSocket socket,
+                TcpTransportListener listener,
+                uint channelId)
+            {
+                m_socket = socket;
+                m_listener = listener;
+                m_channelId = channelId;
+            }
+
+            public int Handle => m_socket.Handle;
+
+            public EndPoint LocalEndpoint => m_socket.LocalEndpoint;
+
+            public EndPoint RemoteEndpoint => m_socket.RemoteEndpoint;
+
+            public TransportChannelFeatures MessageSocketFeatures => m_socket.MessageSocketFeatures;
+
+            public Task ConnectAsync(Uri endpointUrl, CancellationToken ct = default)
+            {
+                return m_socket.ConnectAsync(endpointUrl, ct);
+            }
+
+            public void Close()
+            {
+                try
+                {
+                    m_socket.Close();
+                }
+                finally
+                {
+                    ReleaseLease();
+                }
+            }
+
+            public void Dispose()
+            {
+                try
+                {
+                    m_socket.Dispose();
+                }
+                finally
+                {
+                    ReleaseLease();
+                }
+            }
+
+            public void ReadNextMessage()
+            {
+                m_socket.ReadNextMessage();
+            }
+
+            public void ChangeSink(IMessageSink sink)
+            {
+                m_socket.ChangeSink(sink);
+            }
+
+            public bool Send(IMessageSocketAsyncEventArgs args)
+            {
+                return m_socket.Send(args);
+            }
+
+            public IMessageSocketAsyncEventArgs MessageSocketEventArgs()
+            {
+                return m_socket.MessageSocketEventArgs();
+            }
+
+            private void ReleaseLease()
+            {
+                if (Interlocked.Exchange(ref m_disposed, 1) == 0)
+                {
+                    m_listener.ReleaseReverseConnectClientChannel(m_channelId);
+                }
+            }
+
+            private readonly IMessageSocket m_socket;
+            private readonly TcpTransportListener m_listener;
+            private readonly uint m_channelId;
+            private int m_disposed;
+        }
+
         private readonly Lock m_lock = new();
         private readonly ITelemetryContext m_telemetry;
         private readonly ILogger m_logger;
@@ -1212,9 +1421,13 @@ namespace Opc.Ua.Bindings
         private ConcurrentDictionary<uint, TcpListenerChannel> m_channels;
         private ITransportListenerCallback m_callback;
         private bool m_reverseConnectListener;
+        private uint m_maxReverseConnectClientChannels;
         private uint m_maxReverseConnectAnonymousConnections;
         private IPAddress m_reverseConnectListenAddress;
+        private ConcurrentDictionary<uint, ReverseConnectClientChannelLease> m_reverseConnectClientChannelLeases;
         private ConcurrentDictionary<uint, byte> m_reverseConnectAnonymousChannelIds;
+        private readonly Lock m_reverseConnectClientChannelLock = new();
+        private uint m_reverseConnectClientChannelCount;
         private int m_inactivityDetectPeriod;
         private Timer m_inactivityDetectionTimer;
         private ActiveClientTracker m_activeClientTracker;
