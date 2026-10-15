@@ -3477,6 +3477,14 @@ namespace Opc.Ua.Server
                     monitoredItem,
                     unsubscribe);
 
+            // A refused subscription is never unsubscribed by the caller, so it must
+            // not take a reference count or signal an update. Unsubscribing always
+            // releases the count, as before.
+            if (!unsubscribe && ServiceResult.IsBad(serviceResult))
+            {
+                return serviceResult;
+            }
+
             // This call recursively updates a reference count all nodes in the notifier
             // hierarchy below the area. Sources with a reference count of 0 do not have
             // any active subscriptions so they do not need to report events.
