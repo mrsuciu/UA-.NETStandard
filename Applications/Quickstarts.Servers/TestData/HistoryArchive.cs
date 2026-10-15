@@ -41,6 +41,16 @@ namespace TestData
     /// </summary>
     internal sealed class HistoryArchive : IDisposable
     {
+        /// <summary>
+        /// The interval between two archived values, in milliseconds.
+        /// </summary>
+        internal const int SampleIntervalMs = 10000;
+
+        /// <summary>
+        /// The maximum number of values archived for one variable.
+        /// </summary>
+        internal const int MaxValuesPerRecord = 2000;
+
         public HistoryArchive(ITelemetryContext telemetry)
         {
             m_logger = telemetry.CreateLogger<HistoryArchive>();
@@ -116,7 +126,10 @@ namespace TestData
                 {
                     var entry = new HistoryEntry
                     {
-                        Value = new DataValue { ServerTimestamp = now.AddSeconds(-(ii * 10)) }
+                        Value = new DataValue
+                        {
+                            ServerTimestamp = now.AddMilliseconds(-(ii * SampleIntervalMs))
+                        }
                     };
                     entry.Value.SourceTimestamp = entry.Value.ServerTimestamp.AddMilliseconds(1234);
                     entry.IsModified = false;
@@ -157,7 +170,7 @@ namespace TestData
                     now.AddSeconds(-2500)
                 ];
 
-                m_updateTimer ??= new Timer(OnUpdate, null, 10000, 10000);
+                m_updateTimer ??= new Timer(OnUpdate, null, SampleIntervalMs, SampleIntervalMs);
             }
         }
 
@@ -174,7 +187,7 @@ namespace TestData
                 {
                     foreach (HistoryRecord record in m_records.Values)
                     {
-                        if (!record.Historizing || record.RawData.Count >= 2000)
+                        if (!record.Historizing || record.RawData.Count >= MaxValuesPerRecord)
                         {
                             continue;
                         }

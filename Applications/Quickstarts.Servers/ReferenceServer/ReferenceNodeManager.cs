@@ -3880,12 +3880,23 @@ namespace Quickstarts.ReferenceServer
                 new LocalizedText("en", "HA Configuration"),
                 true);
 
+            // OPC 10000-11 5.2.2: only AggregateConfiguration and Stepped are
+            // mandatory. Optional children are exposed only when they describe the
+            // archive truthfully: HistoryArchive stores one value every
+            // SampleIntervalMs regardless of value changes (no exception deviation),
+            // keeps at most MaxValuesPerRecord values, has no time based retention and
+            // no vendor specific calculation. The server wide aggregate list is under
+            // HistoryServerCapabilities, so the per variable folder is not exposed.
+            configuration.RemoveChild(configuration.Definition);
+            configuration.RemoveChild(configuration.ExceptionDeviation);
+            configuration.RemoveChild(configuration.ExceptionDeviationFormat);
+            configuration.RemoveChild(configuration.MaxTimeStoredValues);
+            configuration.RemoveChild(configuration.AggregateFunctions);
+
             configuration.Stepped.Value = false;
-            configuration.Definition.Value = string.Empty;
-            configuration.MaxTimeInterval.Value = 0;
-            configuration.MinTimeInterval.Value = 0;
-            configuration.ExceptionDeviation.Value = 0;
-            configuration.ExceptionDeviationFormat.Value = 0;
+            configuration.MinTimeInterval.Value = HistoryArchive.SampleIntervalMs;
+            configuration.MaxTimeInterval.Value = HistoryArchive.SampleIntervalMs;
+            configuration.MaxCountStoredValues.Value = HistoryArchive.MaxValuesPerRecord;
             DateTime start = DateTime.UtcNow.AddSeconds(-10000);
             configuration.StartOfArchive.Value = start;
             configuration.StartOfOnlineArchive.Value = start;
