@@ -28,6 +28,7 @@
  * ======================================================================*/
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -174,6 +175,64 @@ namespace Opc.Ua.Server.Tests
                 m_requestHeader,
                 new UInt32Collection { subscription.SubscriptionId },
                 CancellationToken.None).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// A refused event item must not leave the node flagged as monitored. The flag
+        /// is a reference count over the notifier hierarchy (NodeState.AreEventsMonitored):
+        /// a node with no active subscription does not need to report events, and a
+        /// refused item is never unsubscribed, so a count taken for it is never released.
+        /// </summary>
+        [Test]
+        public async Task RefusedEventItemDoesNotMarkNodeAsMonitoredAsync()
+        {
+            ushort ns = (ushort)m_server.CurrentInstance.NamespaceUris.GetIndex(
+                Quickstarts.ReferenceServer.Namespaces.ReferenceServer);
+            // a folder without SubscribeToEvents that no other test subscribes to.
+            var folderWithoutNotifier = new NodeId("Attributes", ns);
+            Assert.AreEqual(
+                EventNotifiers.None,
+                await ReadEventNotifierAsync(folderWithoutNotifier).ConfigureAwait(false));
+            NodeState folder = m_server.CurrentInstance.NodeManager.NodeManagers
+                .OfType<ReferenceNodeManager>()
+                .Single()
+                .FindPredefinedNode<NodeState>(folderWithoutNotifier);
+            Assert.IsNotNull(folder);
+            Assert.IsFalse(folder.AreEventsMonitored, "Precondition: no event subscription.");
+
+            m_requestHeader.Timestamp = DateTime.UtcNow;
+            CreateSubscriptionResponse subscription = await m_server.CreateSubscriptionAsync(
+                m_secureChannelContext,
+                m_requestHeader,
+                1000,
+                100,
+                10,
+                0,
+                true,
+                0,
+                CancellationToken.None).ConfigureAwait(false);
+
+            m_requestHeader.Timestamp = DateTime.UtcNow;
+            CreateMonitoredItemsResponse response = await m_server.CreateMonitoredItemsAsync(
+                m_secureChannelContext,
+                m_requestHeader,
+                subscription.SubscriptionId,
+                TimestampsToReturn.Both,
+                new MonitoredItemCreateRequestCollection { CreateEventItem(folderWithoutNotifier, 1) },
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.IsTrue(StatusCode.IsBad(response.Results[0].StatusCode));
+            Assert.IsFalse(
+                folder.AreEventsMonitored,
+                "A refused event item must not mark the node (and its children) as monitored.");
+
+            m_requestHeader.Timestamp = DateTime.UtcNow;
+            await m_server.DeleteSubscriptionsAsync(
+                m_secureChannelContext,
+                m_requestHeader,
+                new UInt32Collection { subscription.SubscriptionId },
+                CancellationToken.None).ConfigureAwait(false);
+            Assert.IsFalse(folder.AreEventsMonitored, "Still flagged after the subscription was deleted.");
         }
 
         private async Task<byte> ReadEventNotifierAsync(NodeId nodeId)
