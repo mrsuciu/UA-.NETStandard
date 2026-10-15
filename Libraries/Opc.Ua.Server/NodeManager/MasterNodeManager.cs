@@ -2696,6 +2696,18 @@ namespace Opc.Ua.Server
                         continue;
                     }
 
+                    // OPC 10000-3 5.5.1 / 5.6: only Objects and Views have the
+                    // EventNotifier attribute. OPC 10000-4 Table 179:
+                    // Bad_AttributeIdInvalid "The attribute is not supported for the
+                    // specified node".
+                    if (nodeMetadata != null &&
+                        nodeMetadata.NodeClass != NodeClass.Unspecified &&
+                        !Attributes.IsValid(nodeMetadata.NodeClass, Attributes.EventNotifier))
+                    {
+                        errors[ii] = StatusCodes.BadAttributeIdInvalid;
+                        continue;
+                    }
+
                     IEventMonitoredItem monitoredItem = Server.EventManager.CreateMonitoredItem(
                         context,
                         nodeManager.SyncNodeManager,
@@ -2747,7 +2759,15 @@ namespace Opc.Ua.Server
                         if (ServiceResult.IsBad(error))
                         {
                             Server.EventManager.DeleteMonitoredItem(monitoredItem.Id);
-                            errors[ii] = error;
+
+                            // The node cannot be used to subscribe to events (its
+                            // EventNotifier has no SubscribeToEvents bit, OPC 10000-3
+                            // 8.59). Bad_NotSupported is not a CreateMonitoredItems
+                            // result code (OPC 10000-4 5.13.2.4); report the
+                            // EventNotifier attribute as not supported for the node.
+                            errors[ii] = error.StatusCode == StatusCodes.BadNotSupported
+                                ? new ServiceResult(StatusCodes.BadAttributeIdInvalid)
+                                : error;
                             continue;
                         }
                     }
