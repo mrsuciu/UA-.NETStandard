@@ -94,6 +94,18 @@ namespace Opc.Ua.Bindings
         {
         }
 
+        /// <summary>
+        /// The most buffers a writable stream takes from its buffer manager. Zero means
+        /// no limit. A write that needs one more buffer fails with BadEncodingLimitsExceeded
+        /// and sets <see cref="BufferLimitExceeded"/>.
+        /// </summary>
+        internal int MaxBufferCount { get; set; }
+
+        /// <summary>
+        /// Whether a write failed because the stream holds <see cref="MaxBufferCount"/> buffers.
+        /// </summary>
+        internal bool BufferLimitExceeded { get; private set; }
+
         /// <inheritdoc/>
         protected override void Dispose(bool disposing)
         {
@@ -635,6 +647,11 @@ namespace Opc.Ua.Bindings
                     throw new IOException("Attempt to write past end of stream.");
                 }
 
+                if (MaxBufferCount != 0 && m_buffers.Count >= MaxBufferCount)
+                {
+                    ThrowBufferLimitExceeded();
+                }
+
                 byte[] newBuffer = m_bufferManager.TakeBuffer(
                     m_bufferSize,
                     "ArraySegmentStream.Write");
@@ -643,6 +660,26 @@ namespace Opc.Ua.Bindings
 
                 SetCurrentBuffer(m_buffers.Count - 1);
             }
+        }
+
+        /// <summary>
+        /// Fails a write that needs more than <see cref="MaxBufferCount"/> buffers.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void ThrowBufferLimitExceeded()
+        {
+            // the write moved past the last buffer, so all of it is written.
+            if (m_buffers.Count > 0)
+            {
+                m_endOfLastBuffer = m_buffers[^1].Count;
+            }
+
+            BufferLimitExceeded = true;
+
+            throw ServiceResultException.Create(
+                StatusCodes.BadEncodingLimitsExceeded,
+                "The message does not fit in {0} buffers.",
+                MaxBufferCount);
         }
 
         /// <summary>

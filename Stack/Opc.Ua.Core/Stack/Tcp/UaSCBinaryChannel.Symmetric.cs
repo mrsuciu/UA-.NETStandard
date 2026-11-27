@@ -526,37 +526,83 @@ namespace Opc.Ua.Bindings
                 }
 
                 // write the body to stream.
+                bool truncated = false;
                 var ostrm = new ArraySegmentStream(
                     BufferManager,
                     SendBufferSize,
                     headerSize,
                     maxPayloadSize);
 
-                // check for encodeable body.
-                if (messageBody is IEncodeable encodeable)
+                try
                 {
-                    // debug code used to verify that message aborts are handled correctly.
-                    // int maxMessageSize = Quotas.MessageContext.MaxMessageSize;
-                    // Quotas.MessageContext.MaxMessageSize = Int32.MaxValue;
+                    // the stream does not take more chunks than a message within the
+                    // limits can fill, so a larger message is not encoded in full.
+                    int maxMessageSize = Quotas.MessageContext.MaxMessageSize;
+                    bool encoderLimit = maxMessageSize > 0 && messageBody is IEncodeable;
+                    int maxChannelSize = isRequest ? MaxRequestMessageSize : MaxResponseMessageSize;
 
-                    BinaryEncoder.EncodeMessage(encodeable, ostrm, Quotas.MessageContext, true);
+                    // the size check of the channel below lets a body pass that is
+                    // up to the size of the chunk headers larger than its limit.
+                    ostrm.MaxBufferCount = encoderLimit
+                        ? GetMaxBodyChunkCount(maxMessageSize, 0, maxPayloadSize)
+                        : GetMaxBodyChunkCount(
+                            maxChannelSize > 0 ? (long)maxChannelSize + headerSize : 0,
+                            isRequest ? MaxRequestChunkCount : MaxResponseChunkCount,
+                            maxPayloadSize);
 
-                    // Quotas.MessageContext.MaxMessageSize = maxMessageSize;
+                    try
+                    {
+                        // check for encodeable body.
+                        if (messageBody is IEncodeable encodeable)
+                        {
+                            // debug code used to verify that message aborts are handled correctly.
+                            // int maxMessageSize = Quotas.MessageContext.MaxMessageSize;
+                            // Quotas.MessageContext.MaxMessageSize = Int32.MaxValue;
+
+                            BinaryEncoder.EncodeMessage(encodeable, ostrm, Quotas.MessageContext, true);
+
+                            // Quotas.MessageContext.MaxMessageSize = maxMessageSize;
+                        }
+
+                        // check for raw bytes.
+                        var rawBytes = messageBody as ArraySegment<byte>?;
+
+                        if (rawBytes != null)
+                        {
+                            using var encoder = new BinaryEncoder(ostrm, Quotas.MessageContext, true);
+                            encoder.WriteRawBytes(
+                                rawBytes.Value.Array,
+                                rawBytes.Value.Offset,
+                                rawBytes.Value.Count);
+                        }
+                    }
+                    catch (Exception) when (ostrm.BufferLimitExceeded)
+                    {
+                        // the encoder reports a message that is larger than its limit
+                        // after it has written all of it. This is the same error.
+                        if (encoderLimit)
+                        {
+                            throw ServiceResultException.Create(
+                                StatusCodes.BadEncodingLimitsExceeded,
+                                "MaxMessageSize {0} exceeded.",
+                                maxMessageSize);
+                        }
+
+                        // the chunks written so far exceed the limits of the channel
+                        // and the message is aborted below.
+                        truncated = true;
+                    }
+
+                    chunksToProcess = ostrm.GetBuffers("WriteSymmetricMessage");
                 }
-
-                // check for raw bytes.
-                var rawBytes = messageBody as ArraySegment<byte>?;
-
-                if (rawBytes != null)
+                finally
                 {
-                    using var encoder = new BinaryEncoder(ostrm, Quotas.MessageContext, true);
-                    encoder.WriteRawBytes(
-                        rawBytes.Value.Array,
-                        rawBytes.Value.Offset,
-                        rawBytes.Value.Count);
+                    // returns the buffers of a body that could not be encoded.
+                    if (chunksToProcess == null)
+                    {
+                        ostrm.Dispose();
+                    }
                 }
-
-                chunksToProcess = ostrm.GetBuffers("WriteSymmetricMessage");
 
                 // ensure there is at least one chunk.
                 if (chunksToProcess.Count == 0)
@@ -589,9 +635,10 @@ namespace Opc.Ua.Bindings
                     using var encoder = new BinaryEncoder(strm, Quotas.MessageContext, false);
                     // check if the message needs to be aborted.
                     if (MessageLimitsExceeded(
-                        isRequest,
-                        messageSize + chunkToProcess.Count - headerSize,
-                        ii + 1))
+                            isRequest,
+                            messageSize + chunkToProcess.Count - headerSize,
+                            ii + 1) ||
+                        (truncated && ii == chunksToProcess.Count - 1))
                     {
                         encoder.WriteUInt32(null, messageType | TcpMessageType.Abort);
 
@@ -740,6 +787,27 @@ namespace Opc.Ua.Bindings
                     chunksToProcess?.Release(BufferManager, "WriteSymmetricMessage");
                 }
             }
+        }
+
+        /// <summary>
+        /// The chunks a message body can fill before it is larger than a message size or
+        /// a chunk count. Zero if there is no limit.
+        /// </summary>
+        /// <param name="maxBodySize">The largest body; zero if not limited.</param>
+        /// <param name="maxChunkCount">The most chunks; zero if not limited.</param>
+        /// <param name="maxPayloadSize">The body bytes a chunk holds.</param>
+        private static int GetMaxBodyChunkCount(long maxBodySize, int maxChunkCount, int maxPayloadSize)
+        {
+            // one chunk more than the limit holds: a body that needs another chunk
+            // is larger than the limit.
+            long limit = maxChunkCount > 0 ? maxChunkCount + 1L : long.MaxValue;
+
+            if (maxBodySize > 0 && maxPayloadSize > 0)
+            {
+                limit = Math.Min(limit, (maxBodySize / maxPayloadSize) + 1L);
+            }
+
+            return limit > int.MaxValue ? 0 : (int)limit;
         }
 
         /// <summary>
